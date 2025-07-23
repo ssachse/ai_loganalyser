@@ -1098,14 +1098,14 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
             'cache_key': 'proxmox_status'
         },
         'proxmox-problems': {
-            'question': _('shortcut_proxmox_problems'),
+            'question': 'Welche Probleme gibt es im Proxmox-Cluster?',
             'complex': True,
-            'cache_key': 'proxmox_problems'
+            'cache_key': 'proxmox-problems'
         },
         'proxmox-vms': {
-            'question': _('shortcut_proxmox_vms'),
+            'question': 'Welche VMs laufen auf Proxmox?',
             'complex': False,
-            'cache_key': 'proxmox_vms'
+            'cache_key': 'proxmox-vms'
         },
         'proxmox-containers': {
             'question': 'Welche Container laufen auf Proxmox?',
@@ -1113,7 +1113,7 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
             'cache_key': 'proxmox-containers'
         },
         'proxmox-storage': {
-            'question': _('shortcut_proxmox_storage'),
+            'question': 'Wie ist der Speicherplatz-Status im Proxmox-Cluster?',
             'complex': False,
             'cache_key': 'proxmox-storage'
         },
