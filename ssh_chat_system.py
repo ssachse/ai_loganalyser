@@ -308,6 +308,14 @@ class SSHLogCollector:
         proxmox_info = self._analyze_proxmox()
         system_info.update(proxmox_info)
         
+        # 9. Docker-Analyse (falls verfügbar)
+        docker_info = self._analyze_docker()
+        system_info.update(docker_info)
+        
+        # 10. Mailserver-Analyse (falls verfügbar)
+        mailserver_info = self._analyze_mailservers()
+        system_info.update(mailserver_info)
+        
         return system_info
     
     def _analyze_security(self) -> Dict[str, Any]:
@@ -822,6 +830,409 @@ class SSHLogCollector:
             console.print(f"[yellow]⚠️  Fehler bei Proxmox-Analyse: {str(e)[:100]}[/yellow]")
         
         return proxmox_info
+
+    def _analyze_docker(self) -> Dict[str, Any]:
+        """Analysiert Docker, falls verfügbar"""
+        docker_info = {}
+        
+        # Prüfe ob Docker verfügbar ist
+        docker_check = self.execute_remote_command('which docker')
+        if not docker_check:
+            return docker_info
+        
+        console.print("[dim]🐳 Analysiere Docker...[/dim]")
+        
+        try:
+            # Docker-Version
+            version = self.execute_remote_command('docker --version')
+            if version:
+                docker_info['docker_version'] = version
+            
+            # Docker-Info
+            info = self.execute_remote_command('docker info')
+            if info:
+                docker_info['docker_info'] = info
+            
+            # Laufende Container
+            running_containers = self.execute_remote_command('docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"')
+            if running_containers:
+                docker_info['running_containers'] = running_containers
+            
+            # Alle Container (auch gestoppte)
+            all_containers = self.execute_remote_command('docker ps -a --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.CreatedAt}}"')
+            if all_containers:
+                docker_info['all_containers'] = all_containers
+            
+            # Docker-Images
+            images = self.execute_remote_command('docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}"')
+            if images:
+                docker_info['images'] = images
+            
+            # Docker-Volumes
+            volumes = self.execute_remote_command('docker volume ls --format "table {{.Name}}\t{{.Driver}}"')
+            if volumes:
+                docker_info['volumes'] = volumes
+            
+            # Docker-Netzwerke
+            networks = self.execute_remote_command('docker network ls --format "table {{.Name}}\t{{.Driver}}\t{{.Scope}}"')
+            if networks:
+                docker_info['networks'] = networks
+            
+            # Docker-System-Info
+            system_info = self.execute_remote_command('docker system df')
+            if system_info:
+                docker_info['system_usage'] = system_info
+            
+            # Probleme identifizieren
+            problems = []
+            
+            # Prüfe auf gestoppte Container
+            stopped_containers = self.execute_remote_command('docker ps -a --filter "status=exited" --format "{{.Names}}"')
+            if stopped_containers and stopped_containers.strip():
+                problems.append(f"Gestoppte Container:\n{stopped_containers}")
+            
+            # Prüfe auf ungenutzte Images
+            dangling_images = self.execute_remote_command('docker images -f "dangling=true" --format "{{.Repository}}:{{.Tag}}"')
+            if dangling_images and dangling_images.strip():
+                problems.append(f"Ungenutzte Images:\n{dangling_images}")
+            
+            # Prüfe auf ungenutzte Volumes
+            unused_volumes = self.execute_remote_command('docker volume ls -q -f dangling=true')
+            if unused_volumes and unused_volumes.strip():
+                problems.append(f"Ungenutzte Volumes:\n{unused_volumes}")
+            
+            # Prüfe auf Docker-Daemon-Status
+            daemon_status = self.execute_remote_command('systemctl is-active docker')
+            if daemon_status and 'inactive' in daemon_status:
+                problems.append("Docker-Daemon ist inaktiv")
+            
+            # Speichere identifizierte Probleme
+            if problems:
+                docker_info['problems'] = problems
+                docker_info['problems_count'] = len(problems)
+            
+            if docker_info:
+                docker_info['docker_detected'] = True
+                console.print("[green]✅ Docker gefunden und analysiert[/green]")
+            else:
+                console.print("[yellow]⚠️  Docker verfügbar, aber keine Daten erreichbar[/yellow]")
+                
+        except Exception as e:
+            console.print(f"[yellow]⚠️  Fehler bei Docker-Analyse: {str(e)[:100]}[/yellow]")
+        
+        return docker_info
+
+    def _analyze_mailservers(self) -> Dict[str, Any]:
+        """Analysiert Mailserver (Mailcow, Postfix), falls verfügbar"""
+        mailserver_info = {}
+        
+        console.print("[dim]📧 Analysiere Mailserver...[/dim]")
+        
+        try:
+            # Prüfe auf Mailcow
+            mailcow_info = self._analyze_mailcow()
+            if mailcow_info:
+                mailserver_info['mailcow'] = mailcow_info
+                mailserver_info['mailcow_detected'] = True
+            
+            # Prüfe auf Postfix
+            postfix_info = self._analyze_postfix()
+            if postfix_info:
+                mailserver_info['postfix'] = postfix_info
+                mailserver_info['postfix_detected'] = True
+            
+            # Prüfe auf andere Mailserver
+            other_mailservers = self._analyze_other_mailservers()
+            if other_mailservers:
+                mailserver_info['other_mailservers'] = other_mailservers
+            
+            if mailserver_info:
+                mailserver_info['mailserver_detected'] = True
+                console.print("[green]✅ Mailserver gefunden und analysiert[/green]")
+            else:
+                console.print("[yellow]⚠️  Keine Mailserver erkannt[/yellow]")
+                
+        except Exception as e:
+            console.print(f"[yellow]⚠️  Fehler bei Mailserver-Analyse: {str(e)[:100]}[/yellow]")
+        
+        return mailserver_info
+
+    def _analyze_mailcow(self) -> Dict[str, Any]:
+        """Analysiert Mailcow, falls verfügbar"""
+        mailcow_info = {}
+        
+        # Prüfe auf Mailcow-Installation
+        mailcow_check = self.execute_remote_command('ls -la /opt/mailcow-dockerized/')
+        if not mailcow_check:
+            return mailcow_info
+        
+        console.print("[dim]📧 Analysiere Mailcow...[/dim]")
+        
+        try:
+            # Mailcow-Konfiguration
+            config = self.execute_remote_command('cat /opt/mailcow-dockerized/mailcow.conf 2>/dev/null')
+            if config:
+                mailcow_info['config'] = config
+            
+            # Mailcow-Status
+            status = self.execute_remote_command('cd /opt/mailcow-dockerized && docker-compose ps')
+            if status:
+                mailcow_info['status'] = status
+            
+            # Mailcow-Logs (letzte 50 Zeilen)
+            logs = self.execute_remote_command('cd /opt/mailcow-dockerized && docker-compose logs --tail=50')
+            if logs:
+                mailcow_info['recent_logs'] = logs
+            
+            # Mailcow-Container
+            containers = self.execute_remote_command('cd /opt/mailcow-dockerized && docker-compose ps --format "table {{.Name}}\t{{.State}}\t{{.Ports}}"')
+            if containers:
+                mailcow_info['containers'] = containers
+            
+            # Mailcow-Version
+            version = self.execute_remote_command('cd /opt/mailcow-dockerized && git describe --tags --abbrev=0 2>/dev/null')
+            if version:
+                mailcow_info['version'] = version
+            
+            # Probleme identifizieren
+            problems = []
+            
+            # Prüfe auf gestoppte Container
+            stopped_containers = self.execute_remote_command('cd /opt/mailcow-dockerized && docker-compose ps | grep -v "Up"')
+            if stopped_containers and 'Up' not in stopped_containers:
+                problems.append(f"Gestoppte Mailcow-Container:\n{stopped_containers}")
+            
+            # Prüfe auf Fehler in Logs
+            error_logs = self.execute_remote_command('cd /opt/mailcow-dockerized && docker-compose logs --tail=100 | grep -i "error\|failed\|exception"')
+            if error_logs:
+                problems.append(f"Fehler in Mailcow-Logs:\n{error_logs}")
+            
+            # Prüfe auf Speicherplatz
+            disk_usage = self.execute_remote_command('df -h /opt/mailcow-dockerized/')
+            if disk_usage:
+                mailcow_info['disk_usage'] = disk_usage
+            
+            # Speichere identifizierte Probleme
+            if problems:
+                mailcow_info['problems'] = problems
+                mailcow_info['problems_count'] = len(problems)
+            
+            if mailcow_info:
+                mailcow_info['mailcow_detected'] = True
+                console.print("[green]✅ Mailcow gefunden und analysiert[/green]")
+                
+        except Exception as e:
+            console.print(f"[yellow]⚠️  Fehler bei Mailcow-Analyse: {str(e)[:100]}[/yellow]")
+        
+        return mailcow_info
+
+    def _analyze_postfix(self) -> Dict[str, Any]:
+        """Analysiert Postfix, falls verfügbar"""
+        postfix_info = {}
+        
+        # Prüfe ob Postfix verfügbar ist
+        postfix_check = self.execute_remote_command('which postfix')
+        if not postfix_check:
+            return postfix_info
+        
+        console.print("[dim]📧 Analysiere Postfix...[/dim]")
+        
+        try:
+            # Postfix-Version
+            version = self.execute_remote_command('postconf -d | grep mail_version')
+            if version:
+                postfix_info['version'] = version
+            
+            # Postfix-Status
+            status = self.execute_remote_command('systemctl status postfix')
+            if status:
+                postfix_info['status'] = status
+            
+            # Postfix-Konfiguration
+            config = self.execute_remote_command('postconf -n')
+            if config:
+                postfix_info['config'] = config
+            
+            # Postfix-Queue-Status
+            queue_status = self.execute_remote_command('mailq')
+            if queue_status:
+                postfix_info['queue_status'] = queue_status
+            
+            # Postfix-Logs (letzte 50 Zeilen)
+            logs = self.execute_remote_command('tail -50 /var/log/mail.log 2>/dev/null || tail -50 /var/log/maillog 2>/dev/null')
+            if logs:
+                postfix_info['recent_logs'] = logs
+            
+            # Postfix-Statistiken
+            stats = self.execute_remote_command('postconf -d | grep -E "(mynetworks|mydomain|myhostname)"')
+            if stats:
+                postfix_info['network_config'] = stats
+            
+            # Probleme identifizieren
+            problems = []
+            
+            # Prüfe auf Postfix-Service-Status
+            service_status = self.execute_remote_command('systemctl is-active postfix')
+            if service_status and 'inactive' in service_status:
+                problems.append("Postfix-Service ist inaktiv")
+            
+            # Prüfe auf Queue-Probleme
+            queue_count = self.execute_remote_command('mailq | grep -c "^[A-F0-9]"')
+            if queue_count and int(queue_count.strip()) > 10:
+                problems.append(f"Viele E-Mails in Queue: {queue_count.strip()}")
+            
+            # Prüfe auf Fehler in Logs
+            error_logs = self.execute_remote_command('tail -100 /var/log/mail.log 2>/dev/null | grep -i "error\|failed\|reject" | tail -10')
+            if error_logs:
+                problems.append(f"Fehler in Postfix-Logs:\n{error_logs}")
+            
+            # Prüfe auf Spam/Blacklist-Probleme
+            spam_logs = self.execute_remote_command('tail -100 /var/log/mail.log 2>/dev/null | grep -i "spam\|blacklist\|blocked" | tail -10')
+            if spam_logs:
+                problems.append(f"Spam/Blacklist-Probleme:\n{spam_logs}")
+            
+            # Speichere identifizierte Probleme
+            if problems:
+                postfix_info['problems'] = problems
+                postfix_info['problems_count'] = len(problems)
+            
+            if postfix_info:
+                postfix_info['postfix_detected'] = True
+                console.print("[green]✅ Postfix gefunden und analysiert[/green]")
+                
+        except Exception as e:
+            console.print(f"[yellow]⚠️  Fehler bei Postfix-Analyse: {str(e)[:100]}[/yellow]")
+        
+        return postfix_info
+
+    def _analyze_other_mailservers(self) -> Dict[str, Any]:
+        """Analysiert andere Mailserver (Dovecot, Exim, etc.)"""
+        other_info = {}
+        
+        # Prüfe auf Dovecot
+        dovecot_check = self.execute_remote_command('which dovecot')
+        if dovecot_check:
+            dovecot_status = self.execute_remote_command('systemctl status dovecot')
+            if dovecot_status:
+                other_info['dovecot'] = dovecot_status
+        
+        # Prüfe auf Exim
+        exim_check = self.execute_remote_command('which exim')
+        if exim_check:
+            exim_status = self.execute_remote_command('systemctl status exim')
+            if exim_status:
+                other_info['exim'] = exim_status
+        
+        # Prüfe auf Sendmail
+        sendmail_check = self.execute_remote_command('which sendmail')
+        if sendmail_check:
+            sendmail_status = self.execute_remote_command('systemctl status sendmail')
+            if sendmail_status:
+                other_info['sendmail'] = sendmail_status
+        
+        return other_info
+
+    def refresh_proxmox_data(self, target: str = "all") -> Dict[str, Any]:
+        """Aktualisiert gezielt Proxmox-Daten per Chat-Befehl"""
+        proxmox_info = {}
+        
+        # Prüfe ob Proxmox verfügbar ist
+        proxmox_check = self.execute_remote_command('which pvesh')
+        if not proxmox_check:
+            return {"error": "Proxmox nicht verfügbar"}
+        
+        console.print(f"[dim]🔄 Aktualisiere Proxmox-Daten: {target}...[/dim]")
+        
+        try:
+            if target in ["all", "vms", "containers"]:
+                # Hole alle Nodes
+                nodes_json = self.execute_remote_command('pvesh get /nodes --output-format=json')
+                if nodes_json:
+                    import json
+                    try:
+                        nodes_data = json.loads(nodes_json)
+                        for node in nodes_data[:3]:  # Erste 3 Nodes
+                            node_name = node.get('node', '')
+                            if node_name:
+                                console.print(f"[dim]📊 Aktualisiere {node_name}...[/dim]")
+                                
+                                # VMs
+                                if target in ["all", "vms"]:
+                                    vms_data = self.execute_remote_command(f'pvesh get /nodes/{node_name}/qemu --output-format=json')
+                                    if vms_data:
+                                        proxmox_info[f'{node_name}_vms'] = vms_data
+                                
+                                # Container
+                                if target in ["all", "containers"]:
+                                    containers_data = self.execute_remote_command(f'pvesh get /nodes/{node_name}/lxc --output-format=json')
+                                    if containers_data:
+                                        proxmox_info[f'{node_name}_containers'] = containers_data
+                                
+                                # Node-Status
+                                if target == "all":
+                                    status_data = self.execute_remote_command(f'pvesh get /nodes/{node_name}/status --output-format=json')
+                                    if status_data:
+                                        proxmox_info[f'{node_name}_status'] = status_data
+                    except json.JSONDecodeError:
+                        console.print("[yellow]⚠️  Fehler beim Parsen der Node-Daten[/yellow]")
+            
+            if target in ["all", "storage"]:
+                storage_data = self.execute_remote_command('pvesh get /storage --output-format=json')
+                if storage_data:
+                    proxmox_info['storage'] = storage_data
+            
+            if target in ["all", "cluster"]:
+                cluster_data = self.execute_remote_command('pvesh get /cluster/status --output-format=json')
+                if cluster_data:
+                    proxmox_info['cluster_status'] = cluster_data
+                
+                cluster_config = self.execute_remote_command('pvesh get /cluster/config --output-format=json')
+                if cluster_config:
+                    proxmox_info['cluster_config'] = cluster_config
+            
+            if target in ["all", "ha"]:
+                ha_data = self.execute_remote_command('pvesh get /cluster/ha/status --output-format=json')
+                if ha_data:
+                    proxmox_info['ha_status'] = ha_data
+            
+            if target in ["all", "tasks"]:
+                # Aktuelle Tasks
+                nodes_json = self.execute_remote_command('pvesh get /nodes --output-format=json')
+                if nodes_json:
+                    try:
+                        nodes_data = json.loads(nodes_json)
+                        for node in nodes_data[:2]:  # Erste 2 Nodes
+                            node_name = node.get('node', '')
+                            if node_name:
+                                tasks_data = self.execute_remote_command(f'pvesh get /nodes/{node_name}/tasks --output-format=json --limit 10')
+                                if tasks_data:
+                                    proxmox_info[f'{node_name}_tasks'] = tasks_data
+                    except json.JSONDecodeError:
+                        pass
+            
+            if target in ["all", "backups"]:
+                # Backup-Status
+                nodes_json = self.execute_remote_command('pvesh get /nodes --output-format=json')
+                if nodes_json:
+                    try:
+                        nodes_data = json.loads(nodes_json)
+                        for node in nodes_data[:2]:  # Erste 2 Nodes
+                            node_name = node.get('node', '')
+                            if node_name:
+                                # Backup-Jobs
+                                backup_jobs = self.execute_remote_command(f'pvesh get /nodes/{node_name}/vzdump --output-format=json')
+                                if backup_jobs:
+                                    proxmox_info[f'{node_name}_backup_jobs'] = backup_jobs
+                    except json.JSONDecodeError:
+                        pass
+            
+            console.print(f"[green]✅ Proxmox-Daten aktualisiert: {target}[/green]")
+            
+        except Exception as e:
+            console.print(f"[red]❌ Fehler beim Aktualisieren der Proxmox-Daten: {str(e)[:100]}[/red]")
+            proxmox_info["error"] = str(e)
+        
+        return proxmox_info
     
     def collect_logs(self, hours_back: int = 24) -> str:
         """Sammelt Logs vom Zielsystem"""
@@ -1117,6 +1528,51 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
             'complex': False,
             'cache_key': 'proxmox-storage'
         },
+        'docker': {
+            'question': 'Wie ist der Docker-Status und welche Container laufen?',
+            'complex': False,
+            'cache_key': 'docker_status'
+        },
+        'docker-problems': {
+            'question': 'Welche Docker-Probleme gibt es?',
+            'complex': True,
+            'cache_key': 'docker_problems'
+        },
+        'docker-containers': {
+            'question': 'Welche Docker-Container laufen?',
+            'complex': False,
+            'cache_key': 'docker_containers'
+        },
+        'docker-images': {
+            'question': 'Welche Docker-Images sind installiert?',
+            'complex': False,
+            'cache_key': 'docker_images'
+        },
+        'mailcow': {
+            'question': 'Wie ist der Mailcow-Status?',
+            'complex': False,
+            'cache_key': 'mailcow_status'
+        },
+        'mailcow-problems': {
+            'question': 'Welche Mailcow-Probleme gibt es?',
+            'complex': True,
+            'cache_key': 'mailcow_problems'
+        },
+        'postfix': {
+            'question': 'Wie ist der Postfix-Status?',
+            'complex': False,
+            'cache_key': 'postfix_status'
+        },
+        'postfix-problems': {
+            'question': 'Welche Postfix-Probleme gibt es?',
+            'complex': True,
+            'cache_key': 'postfix_problems'
+        },
+        'mailservers': {
+            'question': 'Welche Mailserver sind installiert und aktiv?',
+            'complex': False,
+            'cache_key': 'mailservers_status'
+        },
         'report': {
             'question': 'Erstelle einen detaillierten Systembericht mit Handlungsanweisungen',
             'complex': True,
@@ -1137,6 +1593,9 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
     console.print("="*60)
     console.print(get_text('chat_prompt'))
     console.print(f"\n[bold cyan]{get_text('chat_shortcuts')}[/bold cyan]")
+    
+    # System-Kategorien
+    console.print(f"\n[bold green]System:[/bold green]")
     console.print(f"  • 'services' - {get_text('shortcut_services')}")
     console.print(f"  • 'storage' - {get_text('shortcut_storage')}")
     console.print(f"  • 'security' - {get_text('shortcut_security')}")
@@ -1145,10 +1604,10 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
     console.print(f"  • 'users' - {get_text('shortcut_users')}")
     console.print(f"  • 'updates' - {get_text('shortcut_updates')}")
     console.print(f"  • 'logs' - {get_text('shortcut_logs')}")
-    console.print(f"  • 'report' - {get_text('shortcut_report')}")
     
     # Kubernetes-Kürzel nur anzeigen, wenn Kubernetes verfügbar ist
     if 'kubernetes_detected' in system_info and system_info['kubernetes_detected']:
+        console.print(f"\n[bold blue]Kubernetes:[/bold blue]")
         console.print(f"  • 'k8s' - {get_text('shortcut_k8s')}")
         console.print(f"  • 'k8s-problems' - {get_text('shortcut_k8s_problems')}")
         console.print(f"  • 'k8s-pods' - {get_text('shortcut_k8s_pods')}")
@@ -1157,12 +1616,46 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
     
     # Proxmox-Kürzel nur anzeigen, wenn Proxmox verfügbar ist
     if 'proxmox_detected' in system_info and system_info['proxmox_detected']:
+        console.print(f"\n[bold magenta]Proxmox:[/bold magenta]")
         console.print(f"  • 'proxmox' - {get_text('shortcut_proxmox')}")
         console.print(f"  • 'proxmox-problems' - {get_text('shortcut_proxmox_problems')}")
         console.print(f"  • 'proxmox-vms' - {get_text('shortcut_proxmox_vms')}")
         console.print(f"  • 'proxmox-containers' - {get_text('shortcut_proxmox_containers')}")
         console.print(f"  • 'proxmox-storage' - {get_text('shortcut_proxmox_storage')}")
+        console.print(f"  • 'proxmox-refresh' - Aktualisiere alle Proxmox-Daten")
+        console.print(f"  • 'proxmox-refresh vms' - Aktualisiere nur VM-Daten")
+        console.print(f"  • 'proxmox-refresh containers' - Aktualisiere nur Container-Daten")
+        console.print(f"  • 'proxmox-status' - Zeige aktuellen Cluster-Status")
     
+    # Docker-Kürzel nur anzeigen, wenn Docker verfügbar ist
+    if 'docker_detected' in system_info and system_info['docker_detected']:
+        console.print(f"\n[bold cyan]Docker:[/bold cyan]")
+        console.print(f"  • 'docker' - Wie ist der Docker-Status und welche Container laufen?")
+        console.print(f"  • 'docker-problems' - Welche Docker-Probleme gibt es?")
+        console.print(f"  • 'docker-containers' - Welche Docker-Container laufen?")
+        console.print(f"  • 'docker-images' - Welche Docker-Images sind installiert?")
+    
+    # Mailserver-Kürzel nur anzeigen, wenn Mailserver verfügbar sind
+    if 'mailserver_detected' in system_info and system_info['mailserver_detected']:
+        console.print(f"\n[bold yellow]Mailserver:[/bold yellow]")
+        console.print(f"  • 'mailservers' - Welche Mailserver sind installiert und aktiv?")
+        
+        if 'mailcow_detected' in system_info and system_info['mailcow_detected']:
+            console.print(f"  • 'mailcow' - Wie ist der Mailcow-Status?")
+            console.print(f"  • 'mailcow-problems' - Welche Mailcow-Probleme gibt es?")
+        
+        if 'postfix_detected' in system_info and system_info['postfix_detected']:
+            console.print(f"  • 'postfix' - Wie ist der Postfix-Status?")
+            console.print(f"  • 'postfix-problems' - Welche Postfix-Probleme gibt es?")
+    
+    # Berichte und Tools
+    console.print(f"\n[bold yellow]Berichte & Tools:[/bold yellow]")
+    console.print(f"  • 'report' - {get_text('shortcut_report')}")
+    console.print(f"  • 'cache' - Zeige Cache-Status")
+    console.print(f"  • 'clear' - Lösche Cache")
+    
+    # Navigation
+    console.print(f"\n[bold cyan]Navigation:[/bold cyan]")
     console.print(f"  • 'help' oder 'm' - {get_text('shortcut_help')}")
     console.print(f"  • 'exit', 'quit', 'q', 'bye', 'beenden' {get_text('chat_exit_commands')}")
     console.print("="*60)
@@ -1253,12 +1746,128 @@ Zusammenfassung:"""
                 clear_context_cache()
                 continue
 
+            # Proxmox-spezifische Befehle
+            if 'proxmox_detected' in system_info and system_info['proxmox_detected']:
+                # Proxmox-Refresh-Befehle
+                if user_input.lower().startswith('proxmox-refresh') or user_input.lower().startswith('refresh-proxmox'):
+                    target = "all"
+                    if 'vms' in user_input.lower():
+                        target = "vms"
+                    elif 'containers' in user_input.lower() or 'lxc' in user_input.lower():
+                        target = "containers"
+                    elif 'storage' in user_input.lower():
+                        target = "storage"
+                    elif 'cluster' in user_input.lower():
+                        target = "cluster"
+                    elif 'ha' in user_input.lower():
+                        target = "ha"
+                    elif 'tasks' in user_input.lower():
+                        target = "tasks"
+                    elif 'backups' in user_input.lower():
+                        target = "backups"
+                    
+                    console.print(f"[dim]🔄 Proxmox-Refresh erkannt: {target}[/dim]")
+                    
+                    # Erstelle eine temporäre SSH-Verbindung für den Refresh
+                    from ssh_log_collector_simple import SSHLogCollector as SimpleSSHCollector
+                    temp_collector = SimpleSSHCollector(
+                        host=system_info.get('hostname', 'localhost'),
+                        username=system_info.get('current_user', 'root'),
+                        key_file=getattr(args, 'key_file', None) if args else None
+                    )
+                    
+                    # Führe Refresh durch
+                    refresh_data = temp_collector.refresh_proxmox_data(target)
+                    
+                    if refresh_data and not refresh_data.get("error"):
+                        # Aktualisiere system_info mit neuen Proxmox-Daten
+                        if 'proxmox' not in system_info:
+                            system_info['proxmox'] = {}
+                        
+                        # Merge neue Daten
+                        for key, value in refresh_data.items():
+                            system_info['proxmox'][key] = value
+                        
+                        # Aktualisiere Systemkontext
+                        system_context = create_system_context(system_info, log_entries, anomalies)
+                        
+                        console.print(f"[green]✅ Proxmox-Daten aktualisiert: {target}[/green]")
+                        
+                        # Zeige Zusammenfassung der aktualisierten Daten
+                        if target == "vms" or target == "all":
+                            vm_count = 0
+                            for key in refresh_data.keys():
+                                if key.endswith('_vms'):
+                                    try:
+                                        import json
+                                        vms_data = json.loads(refresh_data[key])
+                                        vm_count += len(vms_data)
+                                    except:
+                                        pass
+                            if vm_count > 0:
+                                console.print(f"[dim]📊 {vm_count} VMs gefunden[/dim]")
+                        
+                        if target == "containers" or target == "all":
+                            container_count = 0
+                            for key in refresh_data.keys():
+                                if key.endswith('_containers'):
+                                    try:
+                                        import json
+                                        containers_data = json.loads(refresh_data[key])
+                                        container_count += len(containers_data)
+                                    except:
+                                        pass
+                            if container_count > 0:
+                                console.print(f"[dim]📊 {container_count} Container gefunden[/dim]")
+                        
+                        # Cache leeren für Proxmox-bezogene Fragen
+                        clear_context_cache('proxmox')
+                        
+                    else:
+                        error_msg = refresh_data.get("error", "Unbekannter Fehler") if refresh_data else "Keine Daten erhalten"
+                        console.print(f"[red]❌ Fehler beim Proxmox-Refresh: {error_msg}[/red]")
+                    
+                    continue
+                
+                # Proxmox-Status-Befehle
+                elif user_input.lower() in ['proxmox-status', 'proxmox-status']:
+                    console.print(f"[dim]📊 Zeige Proxmox-Status...[/dim]")
+                    
+                    # Erstelle eine temporäre SSH-Verbindung
+                    from ssh_log_collector_simple import SSHLogCollector as SimpleSSHCollector
+                    temp_collector = SimpleSSHCollector(
+                        host=system_info.get('hostname', 'localhost'),
+                        username=system_info.get('current_user', 'root'),
+                        key_file=getattr(args, 'key_file', None) if args else None
+                    )
+                    
+                    # Hole aktuellen Status
+                    status_data = temp_collector.refresh_proxmox_data("cluster")
+                    
+                    if status_data and not status_data.get("error"):
+                        console.print(f"[green]✅ Proxmox-Cluster-Status:[/green]")
+                        if 'cluster_status' in status_data:
+                            try:
+                                import json
+                                cluster_info = json.loads(status_data['cluster_status'])
+                                for node in cluster_info:
+                                    node_name = node.get('node', 'Unbekannt')
+                                    node_status = node.get('status', 'Unbekannt')
+                                    console.print(f"  • {node_name}: {node_status}")
+                            except:
+                                console.print(f"[dim]{status_data['cluster_status']}[/dim]")
+                    else:
+                        console.print(f"[red]❌ Fehler beim Abrufen des Proxmox-Status[/red]")
+                    
+                    continue
+
             # Prüfe auf Kürzelwörter (robustere Erkennung)
             shortcut_used = False
             original_input = user_input.lower().strip()
             user_input_lower = user_input.lower().strip()
             complex_analysis = False  # Initialisiere complex_analysis
             cache_key = None  # Initialisiere cache_key
+            interpolated_shortcut = None  # Initialisiere interpolated_shortcut
             
             # Erweiterte Kürzelwörter-Erkennung
             if user_input_lower in shortcuts:
@@ -1294,7 +1903,7 @@ Zusammenfassung:"""
                         continue
                 
                 # Spezielle Behandlung für Systembericht
-                if original_input == 'report' or interpolated_shortcut == 'report':
+                if original_input == 'report' or (interpolated_shortcut and interpolated_shortcut == 'report'):
                     console.print(f"[dim]🔄 {get_text('report_generating')}[/dim]")
                     
                     # Erstelle spezialisierten Prompt für Bericht
@@ -1337,7 +1946,7 @@ Zusammenfassung:"""
                         continue
                 
                 # Prüfe Context Cache für Shortcuts
-                if shortcut_used and interpolated_shortcut:
+                if shortcut_used and interpolated_shortcut and interpolated_shortcut is not None:
                     # Bestimme Topic und Subtopic aus dem Shortcut
                     if interpolated_shortcut.startswith('proxmox-'):
                         topic = 'proxmox'
@@ -1413,7 +2022,7 @@ Zusammenfassung:"""
                 console.print(response)
 
                 # Cache die Antwort im Context Cache (nur echte Antworten)
-                if shortcut_used and interpolated_shortcut and response:
+                if shortcut_used and interpolated_shortcut and interpolated_shortcut is not None and response:
                     # Prüfe, ob es eine echte Antwort ist, nicht nur ein Prompt
                     if len(response) > 50 and not response.startswith('Benutzer:') and not response.startswith('Du:'):
                         # Bestimme Topic und Subtopic aus dem Shortcut
@@ -1466,7 +2075,12 @@ Zusammenfassung:"""
             # Zeige verfügbare Shortcuts bei Fehlern
             if 'shortcut' in str(e).lower() or 'proxmox' in str(e).lower():
                 console.print(f"[dim]Verfügbare Shortcuts: {list(shortcuts.keys())}[/dim]")
-                console.print(f"[dim]🔍 Debug: Shortcut Error Details - interpolated_shortcut: {interpolated_shortcut if 'interpolated_shortcut' in locals() else 'N/A'}[/dim]")
+                # Sichere Prüfung der interpolated_shortcut Variable
+                try:
+                    debug_interpolated = interpolated_shortcut if 'interpolated_shortcut' in locals() else 'N/A'
+                except UnboundLocalError:
+                    debug_interpolated = 'N/A (UnboundLocalError)'
+                console.print(f"[dim]🔍 Debug: Shortcut Error Details - interpolated_shortcut: {debug_interpolated}[/dim]")
             continue
 
 
@@ -1616,17 +2230,90 @@ def create_system_context(system_info: Dict[str, Any], log_entries: List[LogEntr
             context_parts.append("Cluster-Status:")
             context_parts.append(system_info['cluster_status'])
         
+        if 'cluster_config' in system_info:
+            context_parts.append("Cluster-Konfiguration:")
+            context_parts.append(system_info['cluster_config'])
+        
         if 'nodes' in system_info:
             context_parts.append("Nodes:")
             context_parts.append(system_info['nodes'])
         
+        # Strukturierte Node-Details mit VMs und Containern
         if 'node_details' in system_info:
             context_parts.append("Node-Details:")
             for key, value in system_info['node_details'].items():
                 context_parts.append(f"{key}: {value}")
         
+        # Neue strukturierte Proxmox-Daten (aus Refresh)
+        if 'proxmox' in system_info:
+            proxmox_data = system_info['proxmox']
+            
+            # VMs nach Nodes
+            vm_nodes = [key for key in proxmox_data.keys() if key.endswith('_vms')]
+            if vm_nodes:
+                context_parts.append("\n=== PROXMOX-VMs ===")
+                for node_key in vm_nodes:
+                    node_name = node_key.replace('_vms', '')
+                    try:
+                        import json
+                        vms_data = json.loads(proxmox_data[node_key])
+                        context_parts.append(f"\n{node_name}:")
+                        for vm in vms_data:
+                            vm_id = vm.get('vmid', 'N/A')
+                            vm_name = vm.get('name', 'N/A')
+                            vm_status = vm.get('status', 'N/A')
+                            vm_cpu = vm.get('cpu', 'N/A')
+                            vm_memory = vm.get('mem', 'N/A')
+                            context_parts.append(f"  VM {vm_id}: {vm_name} ({vm_status}) - CPU: {vm_cpu}%, RAM: {vm_memory}MB")
+                    except:
+                        context_parts.append(f"{node_name}: {proxmox_data[node_key]}")
+            
+            # Container nach Nodes
+            container_nodes = [key for key in proxmox_data.keys() if key.endswith('_containers')]
+            if container_nodes:
+                context_parts.append("\n=== PROXMOX-CONTAINER ===")
+                for node_key in container_nodes:
+                    node_name = node_key.replace('_containers', '')
+                    try:
+                        import json
+                        containers_data = json.loads(proxmox_data[node_key])
+                        context_parts.append(f"\n{node_name}:")
+                        for container in containers_data:
+                            ct_id = container.get('vmid', 'N/A')
+                            ct_name = container.get('name', 'N/A')
+                            ct_status = container.get('status', 'N/A')
+                            ct_cpu = container.get('cpu', 'N/A')
+                            ct_memory = container.get('mem', 'N/A')
+                            context_parts.append(f"  CT {ct_id}: {ct_name} ({ct_status}) - CPU: {ct_cpu}%, RAM: {ct_memory}MB")
+                    except:
+                        context_parts.append(f"{node_name}: {proxmox_data[node_key]}")
+            
+            # Node-Status
+            status_nodes = [key for key in proxmox_data.keys() if key.endswith('_status')]
+            if status_nodes:
+                context_parts.append("\n=== PROXMOX-NODE-STATUS ===")
+                for node_key in status_nodes:
+                    node_name = node_key.replace('_status', '')
+                    context_parts.append(f"{node_name}: {proxmox_data[node_key]}")
+            
+            # Tasks
+            task_nodes = [key for key in proxmox_data.keys() if key.endswith('_tasks')]
+            if task_nodes:
+                context_parts.append("\n=== PROXMOX-TASKS ===")
+                for node_key in task_nodes:
+                    node_name = node_key.replace('_tasks', '')
+                    context_parts.append(f"{node_name}: {proxmox_data[node_key]}")
+            
+            # Backup-Jobs
+            backup_nodes = [key for key in proxmox_data.keys() if key.endswith('_backup_jobs')]
+            if backup_nodes:
+                context_parts.append("\n=== PROXMOX-BACKUP-JOBS ===")
+                for node_key in backup_nodes:
+                    node_name = node_key.replace('_backup_jobs', '')
+                    context_parts.append(f"{node_name}: {proxmox_data[node_key]}")
+        
         if 'storage' in system_info:
-            context_parts.append("Storage:")
+            context_parts.append("\nStorage:")
             context_parts.append(system_info['storage'])
         
         if 'network_config' in system_info:
@@ -1658,6 +2345,73 @@ def create_system_context(system_info: Dict[str, Any], log_entries: List[LogEntr
         if 'recent_events' in system_info:
             context_parts.append("Kürzliche Events:")
             context_parts.append(system_info['recent_events'])
+    
+    # Docker-Container
+    if 'docker_detected' in system_info and system_info['docker_detected']:
+        context_parts.append("\n=== DOCKER ===")
+        
+        if 'docker_version' in system_info:
+            context_parts.append(f"Version: {system_info['docker_version']}")
+        
+        if 'running_containers' in system_info:
+            context_parts.append("Laufende Container:")
+            context_parts.append(system_info['running_containers'])
+        
+        if 'all_containers' in system_info:
+            context_parts.append("Alle Container:")
+            context_parts.append(system_info['all_containers'])
+        
+        if 'images' in system_info:
+            context_parts.append("Docker-Images:")
+            context_parts.append(system_info['images'])
+        
+        if 'system_usage' in system_info:
+            context_parts.append("Docker-System-Nutzung:")
+            context_parts.append(system_info['system_usage'])
+        
+        # Docker-Probleme
+        if 'problems_count' in system_info and system_info['problems_count'] > 0:
+            context_parts.append(f"\nDOCKER-PROBLEME ({system_info['problems_count']} gefunden):")
+            for i, problem in enumerate(system_info['problems'], 1):
+                context_parts.append(f"Problem {i}: {problem}")
+    
+    # Mailserver
+    if 'mailserver_detected' in system_info and system_info['mailserver_detected']:
+        context_parts.append("\n=== MAILSERVER ===")
+        
+        # Mailcow
+        if 'mailcow_detected' in system_info and system_info['mailcow_detected']:
+            context_parts.append("Mailcow:")
+            if 'mailcow' in system_info:
+                mailcow_data = system_info['mailcow']
+                if 'version' in mailcow_data:
+                    context_parts.append(f"  Version: {mailcow_data['version']}")
+                if 'status' in mailcow_data:
+                    context_parts.append(f"  Status: {mailcow_data['status']}")
+                if 'containers' in mailcow_data:
+                    context_parts.append(f"  Container: {mailcow_data['containers']}")
+                if 'problems_count' in mailcow_data and mailcow_data['problems_count'] > 0:
+                    context_parts.append(f"  Probleme: {mailcow_data['problems_count']} gefunden")
+        
+        # Postfix
+        if 'postfix_detected' in system_info and system_info['postfix_detected']:
+            context_parts.append("Postfix:")
+            if 'postfix' in system_info:
+                postfix_data = system_info['postfix']
+                if 'version' in postfix_data:
+                    context_parts.append(f"  Version: {postfix_data['version']}")
+                if 'status' in postfix_data:
+                    context_parts.append(f"  Status: {postfix_data['status']}")
+                if 'queue_status' in postfix_data:
+                    context_parts.append(f"  Queue: {postfix_data['queue_status']}")
+                if 'problems_count' in postfix_data and postfix_data['problems_count'] > 0:
+                    context_parts.append(f"  Probleme: {postfix_data['problems_count']} gefunden")
+        
+        # Andere Mailserver
+        if 'other_mailservers' in system_info:
+            context_parts.append("Andere Mailserver:")
+            for server, status in system_info['other_mailservers'].items():
+                context_parts.append(f"  {server}: {status}")
     
     # Log-Statistiken
     if log_entries:
@@ -2374,7 +3128,9 @@ def create_intelligent_menu(shortcuts: Dict) -> str:
         'system': ['services', 'storage', 'security', 'processes', 'performance', 'users', 'updates', 'logs'],
         'kubernetes': ['k8s', 'k8s-problems', 'k8s-pods', 'k8s-nodes', 'k8s-resources'],
         'proxmox': ['proxmox', 'proxmox-problems', 'proxmox-vms', 'proxmox-containers', 'proxmox-storage'],
-        'special': ['report', 'help', 'm']
+        'docker': ['docker', 'docker-problems', 'docker-containers', 'docker-images'],
+        'mailservers': ['mailservers', 'mailcow', 'mailcow-problems', 'postfix', 'postfix-problems'],
+        'tools': ['report', 'cache', 'clear']
     }
     
     # Verwende Übersetzungen für Menü-Texte
@@ -2383,11 +3139,17 @@ def create_intelligent_menu(shortcuts: Dict) -> str:
     
     for category, shortcut_list in categories.items():
         if category == 'system':
-            menu_parts.append(f"\n[bold yellow]System:[/bold yellow]")
+            menu_parts.append(f"\n[bold green]System:[/bold green]")
         elif category == 'kubernetes':
             menu_parts.append(f"\n[bold blue]Kubernetes:[/bold blue]")
         elif category == 'proxmox':
-            menu_parts.append(f"\n[bold green]Proxmox:[/bold green]")
+            menu_parts.append(f"\n[bold magenta]Proxmox:[/bold magenta]")
+        elif category == 'docker':
+            menu_parts.append(f"\n[bold cyan]Docker:[/bold cyan]")
+        elif category == 'mailservers':
+            menu_parts.append(f"\n[bold yellow]Mailserver:[/bold yellow]")
+        elif category == 'tools':
+            menu_parts.append(f"\n[bold yellow]Berichte & Tools:[/bold yellow]")
         
         for shortcut in shortcut_list:
             if shortcut in shortcuts:
@@ -2424,6 +3186,16 @@ def interpolate_user_input_to_shortcut(user_input: str, shortcuts: Dict) -> Opti
         'kubernetes': 'k8s',
         'pods': 'k8s-pods',
         'nodes': 'k8s-nodes',
+        'docker': 'docker',
+        'docker container': 'docker-containers',
+        'docker containers': 'docker-containers',
+        'docker image': 'docker-images',
+        'docker images': 'docker-images',
+        'mailcow': 'mailcow',
+        'postfix': 'postfix',
+        'mail': 'mailservers',
+        'email': 'mailservers',
+        'e-mail': 'mailservers',
         'services': 'services',
         'service': 'services',
         'storage': 'storage',
