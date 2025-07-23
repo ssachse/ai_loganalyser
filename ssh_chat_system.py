@@ -1011,15 +1011,7 @@ class SSHLogCollector:
 def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEntry], anomalies: List[Anomaly], args=None):
     """Startet interaktiven Chat mit Ollama"""
     
-    # Stelle sicher, dass die Übersetzungen geladen sind
-    from i18n import i18n
-    try:
-        test_translation = i18n.get('chat_title')
-        if test_translation == 'chat_title':
-            print("Warning: Translations not loaded, forcing reload...")
-            i18n._load_fallback_translations()
-    except Exception as e:
-        print(f"Warning: Could not initialize translations: {e}")
+    # Übersetzungen werden direkt im Chat verwendet - keine Abhängigkeit von i18n
     
     system_context = create_system_context(system_info, log_entries, anomalies)
     chat_history = []
@@ -1172,13 +1164,8 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
     
     # Verwende Übersetzungen oder Fallback
     def get_text(key):
-        try:
-            result = _(key)
-            if result == key:  # Wenn Übersetzung fehlschlägt
-                return translations.get(key, key)
-            return result
-        except:
-            return translations.get(key, key)
+        # Verwende direkt das Fallback-Dictionary
+        return translations.get(key, key)
     
     console.print(f"\n[bold blue]💬 {get_text('chat_title')}[/bold blue]")
     console.print("="*60)
