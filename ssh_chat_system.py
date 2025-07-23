@@ -3505,8 +3505,8 @@ def create_system_context(system_info: Dict[str, Any], log_entries: List[LogEntr
             context_parts.append("Kürzliche Events:")
             context_parts.append(system_info['recent_events'])
     
-    # Netzwerk-Sicherheitsanalyse
-    if 'network_security' in system_info:
+    # Netzwerk-Sicherheitsanalyse (nur bei Netzwerk-Fokus oder wenn explizit gefragt)
+    if 'network_security' in system_info and focus_network_security:
         network_data = system_info['network_security']
         context_parts.append("\n=== NETZWERK-SICHERHEITSANALYSE ===")
         
@@ -3799,6 +3799,10 @@ def create_chat_prompt(system_context: str, user_question: str, chat_history: Li
             prompt_parts.append("- Konzentriere dich auf exponierte Ports und Netzwerk-Sicherheitsrisiken")
             prompt_parts.append("- Gib nur Netzwerk-spezifische Sicherheitsempfehlungen")
         else:
+            # Bei allen anderen Fragen: Netzwerk-Sicherheitsdaten ignorieren
+            prompt_parts.append("- IGNORIERE Netzwerk-Sicherheitsdaten und -Probleme in deiner Antwort")
+            prompt_parts.append("- Konzentriere dich auf die spezifische Frage (Docker, Mailserver, etc.)")
+            prompt_parts.append("- Verwende nur die relevanten System-Daten für die gestellte Frage")
             prompt_parts.append("- Identifiziere automatisch Engpässe, Sicherheitslücken und Unregelmäßigkeiten")
             prompt_parts.append("- Warnung bei kritischen Problemen (hohe CPU/Last, wenig Speicher, Sicherheitsprobleme)")
             prompt_parts.append("- Gib konkrete Handlungsempfehlungen")
