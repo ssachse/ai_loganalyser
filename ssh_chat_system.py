@@ -1324,16 +1324,19 @@ Zusammenfassung:"""
                         console.print(f"[red]❌ {get_text('chat_no_response')}[/red]")
                         continue
                 
-                # Prüfe Cache für andere Kürzelwörter
-                if cache_key and cache_key in response_cache:
-                    console.print(f"[dim]📋 {get_text('chat_using_cached')} '{original_input}'[/dim]")
-                    console.print(f"\n[bold green]🤖 {get_text('chat_ollama')}:[/bold green]")
-                    console.print(response_cache[cache_key])
+                # Prüfe Cache für Shortcuts (nur bei echten Shortcuts, nicht bei Interpolation)
+                if shortcut_used and cache_key and cache_key in response_cache:
+                    # Prüfe, ob es eine echte Antwort ist, nicht nur ein Prompt
+                    cached_response = response_cache[cache_key]
+                    if cached_response and len(cached_response) > 50 and not cached_response.startswith('Benutzer:'):
+                        console.print(f"[dim]📋 {get_text('chat_using_cached')} '{original_input}'[/dim]")
+                        console.print(f"\n[bold green]🤖 {get_text('chat_ollama')}:[/bold green]")
+                        console.print(cached_response)
 
-                    # Füge zur Chat-Historie hinzu
-                    chat_history.append({"role": "user", "content": user_input})
-                    chat_history.append({"role": "assistant", "content": response_cache[cache_key]})
-                    continue
+                        # Füge zur Chat-Historie hinzu
+                        chat_history.append({"role": "user", "content": user_input})
+                        chat_history.append({"role": "assistant", "content": cached_response})
+                        continue
 
             # Erstelle Chat-Prompt
             prompt = create_chat_prompt(system_context, user_input, chat_history)
@@ -1371,10 +1374,14 @@ Zusammenfassung:"""
                 console.print(f"\n[bold green]🤖 {get_text('chat_ollama')}:[/bold green]")
                 console.print(response)
 
-                # Cache die Antwort für Kürzelwörter
-                if shortcut_used and cache_key:
-                    response_cache[cache_key] = response
-                    console.print(f"[dim]📋 {get_text('chat_cached')} '{original_input}'[/dim]")
+                # Cache die Antwort für Kürzelwörter (nur echte Antworten)
+                if shortcut_used and cache_key and response:
+                    # Prüfe, ob es eine echte Antwort ist, nicht nur ein Prompt
+                    if len(response) > 50 and not response.startswith('Benutzer:') and not response.startswith('Du:'):
+                        response_cache[cache_key] = response
+                        console.print(f"[dim]📋 {get_text('chat_cached')} '{original_input}'[/dim]")
+                    else:
+                        console.print(f"[dim]⚠️ Antwort zu kurz oder unvollständig - nicht gecacht[/dim]")
 
                 # Füge zur Chat-Historie hinzu
                 chat_history.append({"role": "user", "content": user_input})
@@ -1931,6 +1938,10 @@ def create_intelligent_menu(shortcuts: Dict) -> str:
         'special': ['report', 'help', 'm']
     }
     
+    # Verwende Übersetzungen für Menü-Texte
+    from i18n import _, i18n
+    i18n.set_language('de')
+    
     for category, shortcut_list in categories.items():
         if category == 'system':
             menu_parts.append(f"\n[bold yellow]System:[/bold yellow]")
@@ -1941,6 +1952,7 @@ def create_intelligent_menu(shortcuts: Dict) -> str:
         
         for shortcut in shortcut_list:
             if shortcut in shortcuts:
+                # Verwende übersetzte Fragen aus den Shortcuts
                 question = shortcuts[shortcut]['question']
                 menu_parts.append(f"  • '{shortcut}' - {question}")
     
