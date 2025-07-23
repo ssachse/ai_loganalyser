@@ -1110,12 +1110,12 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
         'proxmox-containers': {
             'question': 'Welche Container laufen auf Proxmox?',
             'complex': False,
-            'cache_key': 'proxmox_containers'
+            'cache_key': 'proxmox-containers'
         },
         'proxmox-storage': {
             'question': _('shortcut_proxmox_storage'),
             'complex': False,
-            'cache_key': 'proxmox_storage'
+            'cache_key': 'proxmox-storage'
         },
         'report': {
             'question': 'Erstelle einen detaillierten Systembericht mit Handlungsanweisungen',
@@ -1268,8 +1268,9 @@ Zusammenfassung:"""
                         continue
                     
                     # Debug-Ausgabe für Modell-Auswahl
-                    if hasattr(console, 'debug_mode') and console.debug_mode:
-                        console.print(f"[dim]🔍 Shortcut: {interpolated_shortcut}, Complex: {complex_analysis}[/dim]")
+                    console.print(f"[dim]🔍 Shortcut: {interpolated_shortcut}, Complex: {complex_analysis}[/dim]")
+                    console.print(f"[dim]🔍 Verfügbare Shortcuts: {list(shortcuts.keys())}[/dim]")
+                    console.print(f"[dim]🔍 Cache Key: {cache_key}[/dim]")
                 
                 # Spezielle Behandlung für Systembericht
                 if original_input == 'report' or interpolated_shortcut == 'report':
@@ -1683,6 +1684,8 @@ def create_chat_prompt(system_context: str, user_question: str, chat_history: Li
         prompt_parts.append("- WICHTIG: Antworte NUR auf Deutsch")
         prompt_parts.append("- Verwende deutsche Begriffe")
         prompt_parts.append("- Keine englischen Wörter verwenden")
+        prompt_parts.append("- SPRACHE: Du bist ein deutscher System-Administrator, antworte IMMER auf Deutsch")
+        prompt_parts.append("- BEISPIEL: 'Updates' → 'System-Updates', 'Services' → 'Dienste', 'Storage' → 'Speicherplatz'")
         
         # Spezifische Prompts je nach Fragetyp
         question_lower = user_question.lower()
