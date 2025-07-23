@@ -54,7 +54,7 @@ def test_network_security_quick(host: str, username: str, key_file: str = None, 
         console.print(f"[green]✅ {len(all_ip_addresses)} IP-Adressen gefunden[/green]")
         
         # 2. Schnelle externe Tests (nur wenn Services vorhanden)
-        if all_ip_addresses and service_mapping:
+        if all_ip_addresses and service_mapping and len(service_mapping) > 0:
             internal_ports = list(service_mapping.keys())
             
             console.print(f"\n[dim]Teste externe Erreichbarkeit...[/dim]")
@@ -112,7 +112,12 @@ def test_network_security_quick(host: str, username: str, key_file: str = None, 
                 console.print("[red]❌ Externe Tests fehlgeschlagen[/red]")
                 return False
         else:
-            console.print("[yellow]⚠️ Keine Services oder IP-Adressen gefunden[/yellow]")
+            if not all_ip_addresses:
+                console.print("[yellow]⚠️ Keine IP-Adressen gefunden[/yellow]")
+            elif not service_mapping or len(service_mapping) == 0:
+                console.print("[yellow]⚠️ Keine lauschenden Services gefunden[/yellow]")
+            else:
+                console.print("[yellow]⚠️ Unbekannter Zustand[/yellow]")
             return True
         
     except Exception as e:
@@ -120,7 +125,7 @@ def test_network_security_quick(host: str, username: str, key_file: str = None, 
         return False
     finally:
         # Cleanup
-        collector.disconnect()
+        collector.cleanup()
 
 def main():
     """Hauptfunktion"""

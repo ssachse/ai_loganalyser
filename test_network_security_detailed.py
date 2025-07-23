@@ -57,7 +57,7 @@ def test_network_security_detailed(host: str, username: str, key_file: str = Non
             progress.update(task, completed=True)
         
         # Zeige interne Service-Ergebnisse
-        if internal_services:
+        if internal_services and isinstance(internal_services, dict):
             console.print("[green]✅ Interne Service-Analyse erfolgreich[/green]")
             
             # Service-Mapping
@@ -87,34 +87,50 @@ def test_network_security_detailed(host: str, username: str, key_file: str = Non
                 ip_table.add_column("Typ", style="yellow", width=10)
                 
                 for ip_info in all_ip_addresses:
-                    ip_table.add_row(
-                        ip_info.get('ip', 'Unbekannt'),
-                        ip_info.get('interface', 'Unbekannt'),
-                        ip_info.get('type', 'Unbekannt')
-                    )
+                    if isinstance(ip_info, dict):
+                        ip_table.add_row(
+                            ip_info.get('ip', 'Unbekannt'),
+                            ip_info.get('interface', 'Unbekannt'),
+                            ip_info.get('type', 'Unbekannt')
+                        )
+                    else:
+                        ip_table.add_row(str(ip_info), 'Unbekannt', 'Unbekannt')
                 
                 console.print(ip_table)
             
             # Firewall-Status
             firewall_status = internal_services.get('firewall_status', {})
-            if firewall_status:
+            if firewall_status and isinstance(firewall_status, dict):
                 console.print("\n[bold cyan]Firewall-Status:[/bold cyan]")
                 for fw_name, fw_status in firewall_status.items():
-                    status_icon = "🟢" if fw_status.get('active', False) else "🔴"
-                    console.print(f"{status_icon} {fw_name}: {fw_status.get('status', 'Unbekannt')}")
+                    if isinstance(fw_status, dict):
+                        status_icon = "🟢" if fw_status.get('active', False) else "🔴"
+                        console.print(f"{status_icon} {fw_name}: {fw_status.get('status', 'Unbekannt')}")
+                    else:
+                        console.print(f"🔵 {fw_name}: {fw_status}")
         
         else:
-            console.print("[red]❌ Interne Service-Analyse fehlgeschlagen[/red]")
+            if isinstance(internal_services, str):
+                console.print(f"[red]❌ Interne Service-Analyse fehlgeschlagen: {internal_services}[/red]")
+            else:
+                console.print("[red]❌ Interne Service-Analyse fehlgeschlagen[/red]")
             return False
         
         # 2. Teste externe Erreichbarkeit
         console.print("\n[bold cyan]2️⃣ Externe Erreichbarkeitstests[/bold cyan]")
         console.print("-" * 50)
         
-        if all_ip_addresses:
+        if all_ip_addresses and service_mapping and len(service_mapping) > 0:
             internal_ports = list(service_mapping.keys())
             
             if internal_ports:
+                # Konvertiere IP-Adressen zu der erwarteten Format
+                formatted_ip_addresses = []
+                for ip in all_ip_addresses:
+                    if isinstance(ip, str):
+                        formatted_ip_addresses.append({'ip': ip, 'interface': 'unknown', 'type': 'unknown'})
+                    else:
+                        formatted_ip_addresses.append(ip)
                 console.print(f"[dim]Teste {len(all_ip_addresses)} IP-Adressen auf {len(internal_ports)} Ports...[/dim]")
                 
                 with Progress(
@@ -126,7 +142,7 @@ def test_network_security_detailed(host: str, username: str, key_file: str = Non
                 ) as progress:
                     task = progress.add_task("Teste externe Erreichbarkeit...", total=len(all_ip_addresses) * len(internal_ports))
                     
-                    external_tests = collector.test_external_accessibility(all_ip_addresses, internal_ports)
+                    external_tests = collector.test_external_accessibility(formatted_ip_addresses, internal_ports)
                     progress.update(task, completed=True)
                 
                 # Zeige externe Test-Ergebnisse
@@ -169,7 +185,12 @@ def test_network_security_detailed(host: str, username: str, key_file: str = Non
             else:
                 console.print("[yellow]⚠️ Keine lauschenden Ports gefunden - überspringe externe Tests[/yellow]")
         else:
-            console.print("[yellow]⚠️ Keine IP-Adressen gefunden - überspringe externe Tests[/yellow]")
+            if not all_ip_addresses:
+                console.print("[yellow]⚠️ Keine IP-Adressen gefunden - überspringe externe Tests[/yellow]")
+            elif not service_mapping or len(service_mapping) == 0:
+                console.print("[yellow]⚠️ Keine lauschenden Services gefunden - überspringe externe Tests[/yellow]")
+            else:
+                console.print("[yellow]⚠️ Unbekannter Zustand - überspringe externe Tests[/yellow]")
         
         # 3. Teste Sicherheitsbewertung
         console.print("\n[bold cyan]3️⃣ Sicherheitsbewertung[/bold cyan]")
@@ -298,7 +319,7 @@ def test_network_security_detailed(host: str, username: str, key_file: str = Non
         return False
     finally:
         # Cleanup
-        collector.disconnect()
+        collector.cleanup()
 
 def main():
     """Hauptfunktion"""
