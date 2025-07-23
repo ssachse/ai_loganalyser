@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
 """
-Internationalisierung für den AI Log-Analyzer
-Unterstützt Deutsch und Englisch mit automatischer Spracherkennung
+Internationalisierung für den AI Log-Analyzer mit gettext
+POSIX-konform und ohne externe Abhängigkeiten
 """
 
 import os
 import locale
+import gettext
 from typing import Dict, Any
 
 class I18n:
-    """Internationalisierungsklasse für mehrsprachige Unterstützung"""
+    """Internationalisierungsklasse mit gettext-Unterstützung"""
     
     def __init__(self):
         self.current_language = self._detect_language()
-        self.translations = self._load_translations()
+        self._setup_gettext()
     
     def _detect_language(self) -> str:
         """Erkennt die Sprache aus der Shell-Locale"""
@@ -39,52 +40,47 @@ class I18n:
         except Exception:
             return 'en'  # Fallback auf Englisch
     
-    def _load_translations(self) -> Dict[str, Dict[str, str]]:
-        """Lädt alle Übersetzungen"""
-        return {
+    def _setup_gettext(self):
+        """Richtet gettext für die aktuelle Sprache ein"""
+        try:
+            # Pfad zu den Übersetzungsdateien
+            locale_dir = os.path.join(os.path.dirname(__file__), 'locale')
+            
+            # Übersetzungsfunktion für aktuelle Sprache
+            if self.current_language == 'de':
+                self.translation = gettext.translation('ai_loganalyser', locale_dir, languages=['de'])
+            else:
+                self.translation = gettext.translation('ai_loganalyser', locale_dir, languages=['en'])
+            
+            # Übersetzungsfunktion installieren
+            self.translation.install()
+            
+        except Exception as e:
+            # Fallback: Verwende Standard-gettext
+            print(f"Warning: Could not load translations: {e}")
+            self.translation = gettext.NullTranslations()
+            self.translation.install()
+    
+    def get(self, key: str, **kwargs) -> str:
+        """Holt eine Übersetzung für den gegebenen Schlüssel"""
+        try:
+            # Verwende gettext für Übersetzung
+            translation = gettext.gettext(key)
+            
+            # Fallback auf manuelle Übersetzungen wenn gettext nicht funktioniert
+            if translation == key:
+                translation = self._get_fallback_translation(key)
+            
+            if kwargs:
+                return translation.format(**kwargs)
+            return translation
+        except Exception:
+            return self._get_fallback_translation(key)
+    
+    def _get_fallback_translation(self, key: str) -> str:
+        """Fallback-Übersetzungen wenn gettext nicht funktioniert"""
+        fallback_translations = {
             'de': {
-                # Allgemeine UI
-                'loading': 'Lade...',
-                'error': 'Fehler',
-                'success': 'Erfolgreich',
-                'warning': 'Warnung',
-                'info': 'Information',
-                'yes': 'Ja',
-                'no': 'Nein',
-                'cancel': 'Abbrechen',
-                'continue': 'Fortfahren',
-                'back': 'Zurück',
-                'next': 'Weiter',
-                'finish': 'Beenden',
-                
-                # SSH-Verbindung
-                'ssh_connecting': 'Verbinde mit SSH...',
-                'ssh_success': 'SSH-Verbindung erfolgreich',
-                'ssh_failed': 'SSH-Verbindung fehlgeschlagen',
-                'ssh_timeout': 'SSH-Verbindung Timeout',
-                'ssh_error': 'SSH-Fehler',
-                
-                # System-Analyse
-                'system_analysis': 'System-Analyse',
-                'system_info': 'System-Informationen',
-                'storage_analysis': 'Speicherplatz-Analyse',
-                'service_analysis': 'Service-Analyse',
-                'security_analysis': 'Sicherheits-Analyse',
-                'performance_analysis': 'Performance-Analyse',
-                'kubernetes_analysis': 'Kubernetes-Analyse',
-                
-                # Kubernetes
-                'kubernetes_detected': 'Kubernetes erkannt',
-                'kubernetes_not_detected': 'Kubernetes nicht erkannt',
-                'cluster_info': 'Cluster-Informationen',
-                'nodes': 'Nodes',
-                'pods': 'Pods',
-                'services': 'Services',
-                'deployments': 'Deployments',
-                'problems_found': 'Probleme gefunden',
-                'no_problems': 'Keine Probleme gefunden',
-                
-                # Chat
                 'chat_title': 'Interaktiver Chat mit Ollama',
                 'chat_prompt': 'Sie können jetzt weitere Fragen über das analysierte System stellen.',
                 'chat_shortcuts': 'Kürzelwörter für häufige Fragen:',
@@ -100,8 +96,6 @@ class I18n:
                 'chat_using_model': 'Verwende Modell:',
                 'chat_using_fast_model': 'Verwende schnelles Modell:',
                 'chat_using_complex_model': 'Verwende komplexes Modell:',
-                
-                # Kürzelwörter
                 'shortcut_services': 'Welche Services laufen auf dem System?',
                 'shortcut_storage': 'Wie ist der Speicherplatz?',
                 'shortcut_security': 'Gibt es Sicherheitsprobleme?',
@@ -116,122 +110,18 @@ class I18n:
                 'shortcut_k8s_nodes': 'Wie ist der Node-Status?',
                 'shortcut_k8s_resources': 'Wie ist die Ressourcen-Auslastung im Cluster?',
                 'shortcut_help': 'Zeige verfügbare Kürzelwörter',
-                
-                # Fehler
                 'error_permission_denied': 'Fehlende Rechte',
-                'error_file_not_found': 'Datei nicht gefunden',
-                'error_command_not_found': 'Befehl nicht gefunden',
-                'error_kubectl': 'Kubectl-Fehler',
-                'error_other': 'Andere Fehler',
                 'error_summary': 'Fehler-Zusammenfassung',
-                'error_tip_permissions': 'Verwenden Sie einen Benutzer mit erweiterten Rechten für vollständige Analyse.',
-                'error_affected_areas': 'Betroffene Bereiche:',
-                
-                # System-Informationen
-                'hostname': 'Hostname',
-                'distribution': 'Distribution',
-                'kernel': 'Kernel',
-                'cpu': 'CPU',
-                'ram': 'RAM',
-                'uptime': 'Uptime',
-                'disk_usage': 'Festplatten-Auslastung',
-                'memory_usage': 'Speicher-Auslastung',
-                'load_average': 'Durchschnittslast',
-                
-                # Log-Sammlung
-                'collecting_logs': 'Sammle Logs...',
-                'logs_collected': 'Logs gesammelt',
-                'creating_archive': 'Erstelle Archiv...',
-                'archive_created': 'Archiv erstellt',
-                'cleaning_up': 'Räume auf...',
-                'cleanup_complete': 'Aufräumen abgeschlossen',
-                
-                # Ollama
-                'ollama_connecting': 'Verbinde mit Ollama...',
-                'ollama_connected': 'Ollama verbunden',
-                'ollama_error': 'Ollama-Fehler',
-                'ollama_no_models': 'Keine Ollama-Modelle gefunden',
-                'ollama_model_selected': 'Modell ausgewählt:',
-                
-                # Menü
                 'menu_available_shortcuts': 'Verfügbare Kürzelwörter:',
-                'menu_quit_commands': 'exit, quit, q, bye, beenden',
-                'menu_help_commands': 'help oder m',
-                
-                # Analyse
+                'ssh_connecting': 'Verbinde mit SSH...',
+                'ssh_success': 'SSH-Verbindung erfolgreich',
+                'ssh_failed': 'SSH-Verbindung fehlgeschlagen',
+                'ssh_timeout': 'SSH-Verbindung Timeout',
+                'ssh_error': 'SSH-Fehler',
                 'analysis_running': 'Führe automatische System-Analyse durch...',
-                'analysis_complete': 'System-Analyse abgeschlossen',
                 'analysis_summary': 'System-Analyse:',
-                
-                # Status
-                'status_ready': 'Bereit',
-                'status_running': 'Läuft',
-                'status_stopped': 'Gestoppt',
-                'status_error': 'Fehler',
-                'status_warning': 'Warnung',
-                'status_ok': 'OK',
-                'status_critical': 'Kritisch',
-                
-                # Netzwerk
-                'network_connection': 'Netzwerkverbindung',
-                'network_error': 'Netzwerkfehler',
-                'network_timeout': 'Netzwerk-Timeout',
-                
-                # Empfehlungen
-                'recommendations': 'Empfehlungen',
-                'recommendation_security': 'Sicherheitsempfehlung',
-                'recommendation_performance': 'Performance-Empfehlung',
-                'recommendation_maintenance': 'Wartungsempfehlung',
-                
-                # Version
-                'version_info': 'Versions-Informationen',
-                'kubernetes_version': 'Kubernetes-Version',
-                'cluster_config': 'Cluster-Konfiguration',
             },
-            
             'en': {
-                # General UI
-                'loading': 'Loading...',
-                'error': 'Error',
-                'success': 'Success',
-                'warning': 'Warning',
-                'info': 'Information',
-                'yes': 'Yes',
-                'no': 'No',
-                'cancel': 'Cancel',
-                'continue': 'Continue',
-                'back': 'Back',
-                'next': 'Next',
-                'finish': 'Finish',
-                
-                # SSH Connection
-                'ssh_connecting': 'Connecting via SSH...',
-                'ssh_success': 'SSH connection successful',
-                'ssh_failed': 'SSH connection failed',
-                'ssh_timeout': 'SSH connection timeout',
-                'ssh_error': 'SSH error',
-                
-                # System Analysis
-                'system_analysis': 'System Analysis',
-                'system_info': 'System Information',
-                'storage_analysis': 'Storage Analysis',
-                'service_analysis': 'Service Analysis',
-                'security_analysis': 'Security Analysis',
-                'performance_analysis': 'Performance Analysis',
-                'kubernetes_analysis': 'Kubernetes Analysis',
-                
-                # Kubernetes
-                'kubernetes_detected': 'Kubernetes detected',
-                'kubernetes_not_detected': 'Kubernetes not detected',
-                'cluster_info': 'Cluster Information',
-                'nodes': 'Nodes',
-                'pods': 'Pods',
-                'services': 'Services',
-                'deployments': 'Deployments',
-                'problems_found': 'problems found',
-                'no_problems': 'No problems found',
-                
-                # Chat
                 'chat_title': 'Interactive Chat with Ollama',
                 'chat_prompt': 'You can now ask further questions about the analyzed system.',
                 'chat_shortcuts': 'Shortcuts for common questions:',
@@ -247,8 +137,6 @@ class I18n:
                 'chat_using_model': 'Using model:',
                 'chat_using_fast_model': 'Using fast model:',
                 'chat_using_complex_model': 'Using complex model:',
-                
-                # Shortcuts
                 'shortcut_services': 'Which services are running on the system?',
                 'shortcut_storage': 'How is the storage space?',
                 'shortcut_security': 'Are there security issues?',
@@ -263,89 +151,20 @@ class I18n:
                 'shortcut_k8s_nodes': 'How is the node status?',
                 'shortcut_k8s_resources': 'How is the resource usage in the cluster?',
                 'shortcut_help': 'Show available shortcuts',
-                
-                # Errors
                 'error_permission_denied': 'Permission denied',
-                'error_file_not_found': 'File not found',
-                'error_command_not_found': 'Command not found',
-                'error_kubectl': 'Kubectl errors',
-                'error_other': 'Other errors',
                 'error_summary': 'Error Summary',
-                'error_tip_permissions': 'Use a user with extended permissions for complete analysis.',
-                'error_affected_areas': 'Affected areas:',
-                
-                # System Information
-                'hostname': 'Hostname',
-                'distribution': 'Distribution',
-                'kernel': 'Kernel',
-                'cpu': 'CPU',
-                'ram': 'RAM',
-                'uptime': 'Uptime',
-                'disk_usage': 'Disk Usage',
-                'memory_usage': 'Memory Usage',
-                'load_average': 'Load Average',
-                
-                # Log Collection
-                'collecting_logs': 'Collecting logs...',
-                'logs_collected': 'Logs collected',
-                'creating_archive': 'Creating archive...',
-                'archive_created': 'Archive created',
-                'cleaning_up': 'Cleaning up...',
-                'cleanup_complete': 'Cleanup complete',
-                
-                # Ollama
-                'ollama_connecting': 'Connecting to Ollama...',
-                'ollama_connected': 'Ollama connected',
-                'ollama_error': 'Ollama error',
-                'ollama_no_models': 'No Ollama models found',
-                'ollama_model_selected': 'Model selected:',
-                
-                # Menu
                 'menu_available_shortcuts': 'Available shortcuts:',
-                'menu_quit_commands': 'exit, quit, q, bye, beenden',
-                'menu_help_commands': 'help or m',
-                
-                # Analysis
+                'ssh_connecting': 'Connecting via SSH...',
+                'ssh_success': 'SSH connection successful',
+                'ssh_failed': 'SSH connection failed',
+                'ssh_timeout': 'SSH connection timeout',
+                'ssh_error': 'SSH error',
                 'analysis_running': 'Running automatic system analysis...',
-                'analysis_complete': 'System analysis complete',
                 'analysis_summary': 'System Analysis:',
-                
-                # Status
-                'status_ready': 'Ready',
-                'status_running': 'Running',
-                'status_stopped': 'Stopped',
-                'status_error': 'Error',
-                'status_warning': 'Warning',
-                'status_ok': 'OK',
-                'status_critical': 'Critical',
-                
-                # Network
-                'network_connection': 'Network connection',
-                'network_error': 'Network error',
-                'network_timeout': 'Network timeout',
-                
-                # Recommendations
-                'recommendations': 'Recommendations',
-                'recommendation_security': 'Security recommendation',
-                'recommendation_performance': 'Performance recommendation',
-                'recommendation_maintenance': 'Maintenance recommendation',
-                
-                # Version
-                'version_info': 'Version Information',
-                'kubernetes_version': 'Kubernetes Version',
-                'cluster_config': 'Cluster Configuration',
             }
         }
-    
-    def get(self, key: str, **kwargs) -> str:
-        """Holt eine Übersetzung für den gegebenen Schlüssel"""
-        try:
-            translation = self.translations[self.current_language].get(key, key)
-            if kwargs:
-                return translation.format(**kwargs)
-            return translation
-        except Exception:
-            return key
+        
+        return fallback_translations.get(self.current_language, {}).get(key, key)
     
     def get_language(self) -> str:
         """Gibt die aktuelle Sprache zurück"""
@@ -353,12 +172,13 @@ class I18n:
     
     def set_language(self, language: str):
         """Setzt die Sprache manuell"""
-        if language in self.translations:
+        if language in ['de', 'en']:
             self.current_language = language
+            self._setup_gettext()
     
     def get_supported_languages(self) -> list:
         """Gibt unterstützte Sprachen zurück"""
-        return list(self.translations.keys())
+        return ['de', 'en']
 
 # Globale Instanz
 i18n = I18n()

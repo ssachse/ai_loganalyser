@@ -1,0 +1,134 @@
+# English translations for AI Log Analyzer.
+# Copyright (C) 2024 AI Log Analyzer Team.
+# This file is distributed under the same license as the AI Log Analyzer package.
+msgid ""
+msgstr ""
+"Project-Id-Version: AI Log Analyzer 1.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2024-01-01 12:00+0000\n"
+"PO-Revision-Date: 2024-01-01 12:00+0000\n"
+"Last-Translator: Ollama AI\n"
+"Language-Team: English\n"
+"Language: en\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "analysis_running"
+msgstr "Running automatic system analysis..."
+
+msgid "analysis_summary"
+msgstr "System Analysis:"
+
+msgid "chat_cached"
+msgstr "cached"
+
+msgid "chat_exit_commands"
+msgstr "to exit"
+
+msgid "chat_goodbye"
+msgstr "Goodbye! Thank you for using the Log Analyzer."
+
+msgid "chat_no_response"
+msgstr "No response received from Ollama"
+
+msgid "chat_ollama"
+msgstr "Ollama:"
+
+msgid "chat_prompt"
+msgstr "You can now ask further questions about the analyzed system."
+
+msgid "chat_shortcuts"
+msgstr "Shortcuts for common questions:"
+
+msgid "chat_thinking"
+msgstr "Thinking..."
+
+msgid "chat_tip"
+msgstr "Tip:"
+
+msgid "chat_title"
+msgstr "Interactive Chat with Ollama"
+
+msgid "chat_using_cached"
+msgstr "Using cached response for"
+
+msgid "chat_using_complex_model"
+msgstr "Using complex model:"
+
+msgid "chat_using_fast_model"
+msgstr "Using fast model:"
+
+msgid "chat_using_model"
+msgstr "Using model:"
+
+msgid "chat_you"
+msgstr "You:"
+
+msgid "error_permission_denied"
+msgstr "Permission denied"
+
+msgid "error_summary"
+msgstr "Error Summary"
+
+msgid "menu_available_shortcuts"
+msgstr "Available shortcuts:"
+
+msgid "shortcut_help"
+msgstr "Show available shortcuts"
+
+msgid "shortcut_k8s"
+msgstr "How is the Kubernetes cluster status?"
+
+msgid "shortcut_k8s_nodes"
+msgstr "How is the node status?"
+
+msgid "shortcut_k8s_pods"
+msgstr "Which pods are running in the cluster?"
+
+msgid "shortcut_k8s_problems"
+msgstr "What Kubernetes problems are there?"
+
+msgid "shortcut_k8s_resources"
+msgstr "How is the resource usage in the cluster?"
+
+msgid "shortcut_logs"
+msgstr "What do the logs show?"
+
+msgid "shortcut_performance"
+msgstr "How is the system performance?"
+
+msgid "shortcut_processes"
+msgstr "What are the top processes?"
+
+msgid "shortcut_security"
+msgstr "Are there security issues?"
+
+msgid "shortcut_services"
+msgstr "Which services are running on the system?"
+
+msgid "shortcut_storage"
+msgstr "How is the storage space?"
+
+msgid "shortcut_updates"
+msgstr "Are there available system updates?"
+
+msgid "shortcut_users"
+msgstr "Which users are active?"
+
+msgid "ssh_connecting"
+msgstr "Connecting via SSH..."
+
+msgid "ssh_error"
+msgstr "SSH error"
+
+msgid "ssh_failed"
+msgstr "SSH connection failed"
+
+msgid "ssh_success"
+msgstr "SSH connection successful"
+
+msgid "ssh_timeout"
+msgstr "SSH connection timeout"
+

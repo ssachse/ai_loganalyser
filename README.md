@@ -2,11 +2,13 @@
 
 Ein intelligenter SSH-basierter Linux-Log-Analyzer mit integriertem Ollama-Chat und Kubernetes-Cluster-Analyse.
 
-## 🌍 **Mehrsprachige Unterstützung**
-- **Automatische Spracherkennung**: Erkennt Sprache aus Shell-Locale
+## 🌍 **Gettext-basierte Internationalisierung**
+- **POSIX-konform**: Verwendet Standard-gettext ohne externe Abhängigkeiten
+- **Automatische Spracherkennung**: Erkennt Sprache aus Shell-Locale (`LANG`, `LC_ALL`, `LC_MESSAGES`)
 - **Unterstützte Sprachen**: Deutsch (Standard) und Englisch
-- **Dynamische Übersetzung**: Alle UI-Texte und Meldungen übersetzt
-- **Einfache Erweiterung**: Neue Sprachen leicht hinzufügbar
+- **Ollama-Integration**: Automatische Übersetzungsgenerierung mit KI
+- **Fallback-System**: Robuste Übersetzungen auch ohne gettext-Dateien
+- **Einfache Erweiterung**: Neue Sprachen über .po/.mo Dateien hinzufügbar
 
 ## 🚀 Features
 
@@ -51,6 +53,8 @@ pip install rich requests paramiko
 
 ## 🛠️ Installation
 
+### Basis-Installation
+
 1. **Repository klonen**:
 ```bash
 git clone https://github.com/ssachse/ai_loganalyser.git
@@ -66,6 +70,24 @@ pip install -r requirements.txt
 ```bash
 ollama serve
 ```
+
+### Übersetzungen generieren
+
+Die Übersetzungen werden automatisch mit Ollama generiert:
+
+```bash
+# Übersetzungen generieren (erfordert Ollama)
+python3 generate_translations.py
+
+# Oder manuell mit gettext (erfordert gettext-Installation)
+msgfmt -o locale/de/LC_MESSAGES/ai_loganalyser.mo locale/de/LC_MESSAGES/ai_loganalyser.po
+msgfmt -o locale/en/LC_MESSAGES/ai_loganalyser.mo locale/en/LC_MESSAGES/ai_loganalyser.po
+```
+
+**Hinweis**: Falls gettext nicht installiert ist:
+- **macOS**: `brew install gettext`
+- **Ubuntu**: `sudo apt-get install gettext`
+- **Windows**: Download von https://www.gnu.org/software/gettext/
 
 ## 🚀 Verwendung
 

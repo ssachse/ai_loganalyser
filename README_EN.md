@@ -2,11 +2,13 @@
 
 An intelligent SSH-based Linux log analyzer with integrated Ollama chat and Kubernetes cluster analysis.
 
-## 🌍 **Multi-Language Support**
-- **Automatic Language Detection**: Detects language from shell locale
+## 🌍 **Gettext-based Internationalization**
+- **POSIX-compliant**: Uses standard gettext without external dependencies
+- **Automatic Language Detection**: Detects language from shell locale (`LANG`, `LC_ALL`, `LC_MESSAGES`)
 - **Supported Languages**: German (default) and English
-- **Dynamic Translation**: All UI texts and messages translated
-- **Easy Extension**: New languages easily addable
+- **Ollama Integration**: Automatic translation generation with AI
+- **Fallback System**: Robust translations even without gettext files
+- **Easy Extension**: Add new languages via .po/.mo files
 
 ## 🚀 Features
 
