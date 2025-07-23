@@ -930,6 +930,11 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
             'question': 'Zeige verfügbare Kürzelwörter',
             'complex': False,
             'cache_key': None
+        },
+        'm': {
+            'question': 'Zeige verfügbare Kürzelwörter',
+            'complex': False,
+            'cache_key': None
         }
     }
     
@@ -954,9 +959,10 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
         console.print("  • 'k8s-nodes' - Wie ist der Node-Status?")
         console.print("  • 'k8s-resources' - Wie ist die Ressourcen-Auslastung im Cluster?")
     
-    console.print("  • 'help' - Zeige verfügbare Kürzelwörter")
+    console.print("  • 'help' oder 'm' - Zeige verfügbare Kürzelwörter")
     console.print("  • 'exit', 'quit', 'q', 'bye', 'beenden' zum Verlassen")
     console.print("="*60)
+    console.print("\n[dim]💡 Tipp: ['q' to quit, 'm' -> Menü][/dim]")
     
     # Automatische System-Analyse beim Start
     console.print("\n[dim]🤖 Führe automatische System-Analyse durch...[/dim]")
@@ -974,7 +980,7 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
     # Chat-Loop
     while True:
         try:
-            user_input = input("\n[bold cyan]Sie:[/bold cyan] ").strip()
+            user_input = console.input("\n[bold cyan]Sie:[/bold cyan] ").strip()
             
             # Prüfe auf Exit-Befehle
             if user_input.lower() in ['exit', 'quit', 'q', 'bye', 'beenden', 'tschüss', 'ciao']:
@@ -1004,10 +1010,10 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
                     continue
             
             # Hilfe anzeigen
-            if user_input.lower() == 'help':
+            if user_input.lower() in ['help', 'm']:
                 console.print("\n[bold cyan]Verfügbare Kürzelwörter:[/bold cyan]")
                 for shortcut, info in shortcuts.items():
-                    if shortcut != 'help':
+                    if shortcut not in ['help', 'm']:
                         console.print(f"  • '{shortcut}' - {info['question']}")
                 continue
             
