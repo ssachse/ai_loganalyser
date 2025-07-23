@@ -1195,18 +1195,14 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
 
     def run_initial_analysis():
         # Vereinfachter Prompt für Initialanalyse
-        simple_prompt = f"""Du bist ein System-Administrator. Analysiere diese System-Daten und gib eine kurze Zusammenfassung in 2-3 Sätzen auf Deutsch.
+        simple_prompt = f"""Du bist ein deutscher System-Administrator. Analysiere diese System-Daten und gib eine kurze Zusammenfassung in 2-3 Sätzen.
 
-WICHTIGE REGELN:
-- Antworte NUR auf Deutsch
-- Verwende nur lateinische Zeichen (keine chinesischen, arabischen, etc.)
-- Gib eine kurze, präzise Zusammenfassung
-- Keine Code-Snippets oder technische Details
+SPRACHE: Du MUSST auf Deutsch antworten, niemals auf Englisch.
 
 System-Daten:
 {system_context}
 
-Zusammenfassung:"""
+Antworte nur mit der deutschen Zusammenfassung:"""
         
         # Nutze das schnellste verfügbare Modell für die Initialanalyse
         result = query_ollama(simple_prompt, model=select_best_model(complex_analysis=False, for_menu=False), complex_analysis=False)
@@ -1267,7 +1263,7 @@ Zusammenfassung:"""
 
                         console.print(f"[dim]Verwende interpoliertes Kürzelwort: {user_input} (aus '{original_input}')[/dim]")
                     except KeyError as e:
-                        console.print(f"[red]❌ Fehler: Shortcut '{interpolated_shortcut}' nicht gefunden[/red]")
+                        console.print(f"[red]❌ Fehler: Shortcut '{interpolated_shortcut}' nicht gefunden. Verfügbare: {list(shortcuts.keys())}[/red]")
                         continue
                     
                     # Debug-Ausgabe für Modell-Auswahl
@@ -2018,6 +2014,11 @@ Antwort:"""
             response = response.strip().lower()
             # Ersetze Unterstriche durch Bindestriche für Proxmox-Shortcuts
             response = response.replace('_', '-')
+            
+            # Debug-Ausgabe
+            if hasattr(console, 'debug_mode') and console.debug_mode:
+                console.print(f"[dim]🔍 Interpolation: '{user_input}' -> '{response}'[/dim]")
+            
             if response in shortcuts:
                 # Cache das Ergebnis
                 _interpolation_cache[user_input] = response
@@ -2026,6 +2027,26 @@ Antwort:"""
                 # Cache das Ergebnis
                 _interpolation_cache[user_input] = None
                 return None
+            else:
+                # Versuche alternative Schreibweisen
+                alternatives = [
+                    response.replace('_', '-'),
+                    response.replace('-', '_'),
+                    response.replace('proxmox', 'proxmox'),
+                    response.replace('containers', 'containers'),
+                    response.replace('container', 'containers')
+                ]
+                
+                for alt in alternatives:
+                    if alt in shortcuts:
+                        _interpolation_cache[user_input] = alt
+                        return alt
+                
+                # Wenn nichts funktioniert, versuche direkte Zuordnung
+                if 'container' in user_input.lower():
+                    if 'proxmox-containers' in shortcuts:
+                        _interpolation_cache[user_input] = 'proxmox-containers'
+                        return 'proxmox-containers'
         
     except Exception as e:
         # Bei Fehlern: keine Interpolation
