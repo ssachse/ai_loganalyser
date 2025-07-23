@@ -1202,7 +1202,7 @@ SPRACHE: Du MUSST auf Deutsch antworten, niemals auf Englisch.
 System-Daten:
 {system_context}
 
-Antworte nur mit der deutschen Zusammenfassung:"""
+Zusammenfassung:"""
         
         # Nutze das schnellste verfügbare Modell für die Initialanalyse
         result = query_ollama(simple_prompt, model=select_best_model(complex_analysis=False, for_menu=False), complex_analysis=False)
@@ -1264,7 +1264,16 @@ Antworte nur mit der deutschen Zusammenfassung:"""
                         console.print(f"[dim]Verwende interpoliertes Kürzelwort: {user_input} (aus '{original_input}')[/dim]")
                     except KeyError as e:
                         console.print(f"[red]❌ Fehler: Shortcut '{interpolated_shortcut}' nicht gefunden. Verfügbare: {list(shortcuts.keys())}[/red]")
-                        continue
+                        # Versuche direkte Zuordnung als Fallback
+                        if 'container' in user_input_lower and 'proxmox-containers' in shortcuts:
+                            shortcut_info = shortcuts['proxmox-containers']
+                            user_input = shortcut_info['question']
+                            complex_analysis = shortcut_info['complex']
+                            cache_key = shortcut_info['cache_key']
+                            shortcut_used = True
+                            console.print(f"[dim]Verwende Fallback-Kürzelwort: {user_input} (aus '{original_input}')[/dim]")
+                        else:
+                            continue
                     
                     # Debug-Ausgabe für Modell-Auswahl
                     if hasattr(console, 'debug_mode') and console.debug_mode:
@@ -1393,6 +1402,9 @@ Antworte nur mit der deutschen Zusammenfassung:"""
         except Exception as e:
             console.print(f"[red]❌ Fehler im Chat: {e}[/red]")
             console.print(f"[dim]💡 Tipp: Verwenden Sie 'm' für verfügbare Kürzelwörter oder stellen Sie eine freie Frage.[/dim]")
+            # Zeige verfügbare Shortcuts bei Fehlern
+            if 'shortcut' in str(e).lower():
+                console.print(f"[dim]Verfügbare Shortcuts: {list(shortcuts.keys())}[/dim]")
             continue
 
 
@@ -1950,6 +1962,8 @@ def interpolate_user_input_to_shortcut(user_input: str, shortcuts: Dict) -> Opti
         'lxc': 'proxmox-containers',
         'container': 'proxmox-containers',
         'containers': 'proxmox-containers',
+        'proxmox_containers': 'proxmox-containers',  # Fallback für Modell-Ausgabe
+        'proxmox-containers': 'proxmox-containers',  # Fallback für Modell-Ausgabe
         'vm': 'proxmox-vms',
         'vms': 'proxmox-vms',
         'virtual machine': 'proxmox-vms',
