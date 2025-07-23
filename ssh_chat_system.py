@@ -1270,6 +1270,7 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
 
             # Prüfe auf Kürzelwörter
             shortcut_used = False
+            original_input = user_input.lower()
             if user_input.lower() in shortcuts:
                 shortcut_info = shortcuts[user_input.lower()]
                 user_input = shortcut_info['question']
@@ -1280,7 +1281,7 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
                 console.print(f"[dim]Verwende: {user_input}[/dim]")
                 
                 # Spezielle Behandlung für Systembericht
-                if user_input.lower() == 'report' or 'report' in user_input.lower():
+                if original_input == 'report':
                     console.print(f"[dim]🔄 {get_text('report_generating')}[/dim]")
                     
                     # Erstelle spezialisierten Prompt für Bericht
