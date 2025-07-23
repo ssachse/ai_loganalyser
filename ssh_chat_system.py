@@ -1240,6 +1240,18 @@ Zusammenfassung:"""
                 intelligent_menu = create_intelligent_menu(shortcuts)
                 console.print(intelligent_menu)
                 continue
+            
+            # Context Cache Status anzeigen
+            if user_input.lower() in ['cache', 'c', 'status']:
+                console.print(f"[dim]🔍 Debug: Cache-Status-Anfrage erkannt: '{user_input.lower()}'[/dim]")
+                print_context_cache_status()
+                continue
+            
+            # Context Cache löschen
+            if user_input.lower() in ['clear', 'clear-cache']:
+                console.print(f"[dim]🔍 Debug: Cache-Lösch-Anfrage erkannt: '{user_input.lower()}'[/dim]")
+                clear_context_cache()
+                continue
 
             # Prüfe auf Kürzelwörter (robustere Erkennung)
             shortcut_used = False
@@ -1324,19 +1336,35 @@ Zusammenfassung:"""
                         console.print(f"[red]❌ {get_text('chat_no_response')}[/red]")
                         continue
                 
-                # Prüfe Cache für Shortcuts (nur bei echten Shortcuts, nicht bei Interpolation)
-                if shortcut_used and cache_key and cache_key in response_cache:
-                    # Prüfe, ob es eine echte Antwort ist, nicht nur ein Prompt
-                    cached_response = response_cache[cache_key]
-                    if cached_response and len(cached_response) > 50 and not cached_response.startswith('Benutzer:'):
-                        console.print(f"[dim]📋 {get_text('chat_using_cached')} '{original_input}'[/dim]")
-                        console.print(f"\n[bold green]🤖 {get_text('chat_ollama')}:[/bold green]")
-                        console.print(cached_response)
+                # Prüfe Context Cache für Shortcuts
+                if shortcut_used and interpolated_shortcut:
+                    # Bestimme Topic und Subtopic aus dem Shortcut
+                    if interpolated_shortcut.startswith('proxmox-'):
+                        topic = 'proxmox'
+                        subtopic = interpolated_shortcut.replace('proxmox-', '')
+                    elif interpolated_shortcut.startswith('k8s-'):
+                        topic = 'kubernetes'
+                        subtopic = interpolated_shortcut.replace('k8s-', '')
+                    elif interpolated_shortcut in ['proxmox', 'k8s']:
+                        topic = interpolated_shortcut
+                        subtopic = 'status'
+                    else:
+                        topic = 'system'
+                        subtopic = interpolated_shortcut
+                    
+                    # Prüfe Context Cache
+                    cached_data = get_contextual_response(topic, subtopic)
+                    if cached_data and cached_data.get('answer'):
+                        cached_response = cached_data['answer']
+                        if len(cached_response) > 50 and not cached_response.startswith('Benutzer:'):
+                            console.print(f"[dim]📋 Context Cache: {topic}.{subtopic} für '{original_input}'[/dim]")
+                            console.print(f"\n[bold green]🤖 {get_text('chat_ollama')}:[/bold green]")
+                            console.print(cached_response)
 
-                        # Füge zur Chat-Historie hinzu
-                        chat_history.append({"role": "user", "content": user_input})
-                        chat_history.append({"role": "assistant", "content": cached_response})
-                        continue
+                            # Füge zur Chat-Historie hinzu
+                            chat_history.append({"role": "user", "content": user_input})
+                            chat_history.append({"role": "assistant", "content": cached_response})
+                            continue
 
             # Erstelle Chat-Prompt
             prompt = create_chat_prompt(system_context, user_input, chat_history)
@@ -1374,12 +1402,27 @@ Zusammenfassung:"""
                 console.print(f"\n[bold green]🤖 {get_text('chat_ollama')}:[/bold green]")
                 console.print(response)
 
-                # Cache die Antwort für Kürzelwörter (nur echte Antworten)
-                if shortcut_used and cache_key and response:
+                # Cache die Antwort im Context Cache (nur echte Antworten)
+                if shortcut_used and interpolated_shortcut and response:
                     # Prüfe, ob es eine echte Antwort ist, nicht nur ein Prompt
                     if len(response) > 50 and not response.startswith('Benutzer:') and not response.startswith('Du:'):
-                        response_cache[cache_key] = response
-                        console.print(f"[dim]📋 {get_text('chat_cached')} '{original_input}'[/dim]")
+                        # Bestimme Topic und Subtopic aus dem Shortcut
+                        if interpolated_shortcut.startswith('proxmox-'):
+                            topic = 'proxmox'
+                            subtopic = interpolated_shortcut.replace('proxmox-', '')
+                        elif interpolated_shortcut.startswith('k8s-'):
+                            topic = 'kubernetes'
+                            subtopic = interpolated_shortcut.replace('k8s-', '')
+                        elif interpolated_shortcut in ['proxmox', 'k8s']:
+                            topic = interpolated_shortcut
+                            subtopic = 'status'
+                        else:
+                            topic = 'system'
+                            subtopic = interpolated_shortcut
+                        
+                        # Cache im Context Cache
+                        cache_contextual_response(topic, subtopic, user_input, response, system_context)
+                        console.print(f"[dim]📋 Context Cache: {topic}.{subtopic} gecacht[/dim]")
                     else:
                         console.print(f"[dim]⚠️ Antwort zu kurz oder unvollständig - nicht gecacht[/dim]")
 
@@ -1919,6 +1962,148 @@ def select_best_model(complex_analysis: bool = False, for_menu: bool = False) ->
 # Cache für Interpolation
 _interpolation_cache = {}
 
+# Intelligentes kontext-basiertes Caching
+_context_cache = {
+    "system_analysis": {
+        "topics": {},
+        "relationships": {},
+        "last_updated": None
+    }
+}
+
+def cache_contextual_response(topic: str, subtopic: str, question: str, answer: str, system_context: str = None):
+    """
+    Cached Antworten mit Kontext-Erhaltung und intelligenten Verknüpfungen.
+    
+    Args:
+        topic: Hauptbereich (z.B. 'proxmox', 'kubernetes', 'system')
+        subtopic: Unterbereich (z.B. 'vms', 'containers', 'storage')
+        question: Gestellte Frage
+        answer: Gegebene Antwort
+        system_context: Optionaler System-Kontext für Beziehungen
+    """
+    import time
+    
+    if topic not in _context_cache["system_analysis"]["topics"]:
+        _context_cache["system_analysis"]["topics"][topic] = {}
+    
+    if subtopic not in _context_cache["system_analysis"]["topics"][topic]:
+        _context_cache["system_analysis"]["topics"][topic][subtopic] = {}
+    
+    # Cache die Antwort mit Metadaten
+    _context_cache["system_analysis"]["topics"][topic][subtopic] = {
+        "question": question,
+        "answer": answer,
+        "timestamp": time.time(),
+        "system_context": system_context
+    }
+    
+    # Aktualisiere Zeitstempel
+    _context_cache["system_analysis"]["last_updated"] = time.time()
+    
+    # Debug-Ausgabe
+    if hasattr(console, 'debug_mode') and console.debug_mode:
+        console.print(f"[dim]🔍 Context Cache: {topic}.{subtopic} gecacht[/dim]")
+
+def get_contextual_response(topic: str, subtopic: str) -> Optional[Dict]:
+    """
+    Holt gecachte Antwort mit Kontext.
+    
+    Args:
+        topic: Hauptbereich
+        subtopic: Unterbereich
+    
+    Returns:
+        Dict mit 'answer', 'question', 'timestamp' oder None
+    """
+    if (topic in _context_cache["system_analysis"]["topics"] and 
+        subtopic in _context_cache["system_analysis"]["topics"][topic]):
+        return _context_cache["system_analysis"]["topics"][topic][subtopic]
+    return None
+
+def get_topic_summary(topic: str) -> Optional[str]:
+    """
+    Erstellt eine Zusammenfassung für einen ganzen Bereich.
+    
+    Args:
+        topic: Hauptbereich (z.B. 'proxmox')
+    
+    Returns:
+        Zusammenfassung oder None
+    """
+    if topic not in _context_cache["system_analysis"]["topics"]:
+        return None
+    
+    subtopics = _context_cache["system_analysis"]["topics"][topic]
+    if not subtopics:
+        return None
+    
+    summary_parts = [f"📊 {topic.upper()} Bereich:"]
+    for subtopic, data in subtopics.items():
+        if data.get("answer"):
+            # Kürze die Antwort für die Zusammenfassung
+            short_answer = data["answer"][:100] + "..." if len(data["answer"]) > 100 else data["answer"]
+            summary_parts.append(f"  • {subtopic}: {short_answer}")
+    
+    return "\n".join(summary_parts)
+
+def get_related_context(topic: str, subtopic: str) -> List[str]:
+    """
+    Findet verwandte Kontexte für bessere Antworten.
+    
+    Args:
+        topic: Hauptbereich
+        subtopic: Unterbereich
+    
+    Returns:
+        Liste verwandter Kontexte
+    """
+    related = []
+    
+    # Suche nach verwandten Themen im gleichen Bereich
+    if topic in _context_cache["system_analysis"]["topics"]:
+        for other_subtopic, data in _context_cache["system_analysis"]["topics"][topic].items():
+            if other_subtopic != subtopic and data.get("answer"):
+                related.append(f"{topic}.{other_subtopic}: {data['answer'][:50]}...")
+    
+    # Suche nach verwandten Bereichen
+    for other_topic, topic_data in _context_cache["system_analysis"]["topics"].items():
+        if other_topic != topic:
+            for other_subtopic, data in topic_data.items():
+                if data.get("answer"):
+                    related.append(f"{other_topic}.{other_subtopic}: {data['answer'][:50]}...")
+    
+    return related[:3]  # Maximal 3 verwandte Kontexte
+
+def clear_context_cache(topic: str = None):
+    """
+    Löscht Cache-Einträge.
+    
+    Args:
+        topic: Optional - nur diesen Bereich löschen, sonst alles
+    """
+    if topic:
+        if topic in _context_cache["system_analysis"]["topics"]:
+            del _context_cache["system_analysis"]["topics"][topic]
+            console.print(f"[dim]🗑️ Context Cache für '{topic}' gelöscht[/dim]")
+    else:
+        _context_cache["system_analysis"]["topics"].clear()
+        _context_cache["system_analysis"]["relationships"].clear()
+        console.print(f"[dim]🗑️ Gesamter Context Cache gelöscht[/dim]")
+
+def print_context_cache_status():
+    """Zeigt Status des Context Caches an."""
+    topics = _context_cache["system_analysis"]["topics"]
+    if not topics:
+        console.print("[dim]📋 Context Cache: Leer[/dim]")
+        return
+    
+    console.print(f"[dim]📋 Context Cache Status:[/dim]")
+    for topic, subtopics in topics.items():
+        console.print(f"[dim]  • {topic}: {len(subtopics)} Unterbereiche[/dim]")
+        for subtopic in subtopics.keys():
+            console.print(f"[dim]    - {subtopic}[/dim]")
+
 def create_intelligent_menu(shortcuts: Dict) -> str:
     """
     Erstellt ein intelligentes Menü mit Wortwolke-Anreicherung durch schnelles Modell.
@@ -2160,7 +2345,6 @@ def query_ollama(prompt: str, model: str = None, complex_analysis: bool = False)
     except Exception as e:
         console.print(f"[red]Fehler bei Ollama-Anfrage: {e}[/red]")
         return None
-
 
 def main():
     """Hauptfunktion für SSH-Log-Sammlung und -Analyse mit Chat"""
@@ -2443,7 +2627,7 @@ def main():
                         if line.strip():
                             console.print(f"[dim]{line}[/dim]")
         
-        # Anmeldungs-Übersicht
+        # Anmeldungen
         if 'user_login_stats' in system_info or 'current_users' in system_info:
             console.print("\n[bold blue]🔐 Anmeldungs-Übersicht[/bold blue]")
             console.print("="*60)
