@@ -76,6 +76,43 @@ Ein intelligenter SSH-basierter Linux-Log-Analyzer mit integriertem Ollama-Chat,
 - **Chat-Integration**: `network-security`, `exposed-services`, `port-scan`, `service-test` Shortcuts
 - **Sichere Sudo-Nutzung**: Netzwerk-Tools werden nur mit Sudo ausgeführt wenn sicher
 
+## 🚀 Verwendung
+
+### SSH-Log-Collector mit Chat
+```bash
+# Standard-Analyse
+python ssh_chat_system.py user@hostname
+
+# Mit Netzwerk-Sicherheitsanalyse am Anfang
+python ssh_chat_system.py user@hostname --include-network-security
+
+# Schnelle Analyse ohne Logs
+python ssh_chat_system.py user@hostname --quick --no-logs
+
+# Mit SSH-Key
+python ssh_chat_system.py user@hostname --key-file ~/.ssh/id_rsa
+
+# Auf anderem Port
+python ssh_chat_system.py user@hostname --port 2222
+```
+
+### Netzwerk-Sicherheitsanalyse testen
+```bash
+# Detaillierter Test
+python test_network_security_detailed.py user@hostname
+
+# Schneller Test
+python test_network_security_quick.py user@hostname
+```
+
+### Verfügbare Optionen
+- `--include-network-security`: Führt Netzwerk-Sicherheitsanalyse automatisch am Anfang durch
+- `--quick`: Schnelle Analyse ohne detaillierte Datei-Suche
+- `--no-logs`: Überspringe Log-Sammlung (nur System-Info)
+- `--key-file`: Pfad zur SSH-Key-Datei
+- `--port`: SSH-Port (Standard: 22)
+- `--debug`: Zeige Debug-Informationen
+
 ## 📋 Voraussetzungen
 
 ### System-Anforderungen

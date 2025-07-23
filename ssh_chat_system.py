@@ -4515,6 +4515,7 @@ def main():
     parser.add_argument('--quick', action='store_true', help='Schnelle Analyse ohne detaillierte Datei-Suche')
     parser.add_argument('--no-logs', action='store_true', help='Überspringe Log-Sammlung (nur System-Info)')
     parser.add_argument('--debug', action='store_true', help='Zeige Debug-Informationen (Modell-Auswahl, etc.)')
+    parser.add_argument('--include-network-security', action='store_true', help='Führe Netzwerk-Sicherheitsanalyse automatisch am Anfang durch')
     
     args = parser.parse_args()
     
@@ -4557,6 +4558,56 @@ def main():
         system_info['ssh_user'] = username
         system_info['ssh_port'] = args.port
         system_info['ssh_key_file'] = args.key_file
+        
+        # Führe Netzwerk-Sicherheitsanalyse durch, falls gewünscht
+        if args.include_network_security:
+            console.print("\n[bold blue]🔒 Netzwerk-Sicherheitsanalyse[/bold blue]")
+            console.print("="*60)
+            
+            try:
+                # 1. Interne Service-Analyse
+                console.print("[dim]Analysiere lauschende Services...[/dim]")
+                internal_services = collector.analyze_listening_services()
+                
+                # 2. Externe Erreichbarkeit testen
+                all_ip_addresses = internal_services.get('all_ip_addresses', [])
+                if all_ip_addresses:
+                    internal_ports = list(internal_services.get('service_mapping', {}).keys())
+                    
+                    if internal_ports:
+                        console.print(f"[dim]Teste externe Erreichbarkeit für {len(all_ip_addresses)} IP-Adressen und {len(internal_ports)} Ports...[/dim]")
+                        external_tests = collector.test_external_accessibility(all_ip_addresses, internal_ports)
+                        
+                        # 3. Sicherheitsbewertung
+                        console.print("[dim]Erstelle Sicherheitsbewertung...[/dim]")
+                        security_assessment = collector.assess_network_security(internal_services, external_tests)
+                        
+                        # Aktualisiere system_info
+                        if 'network_security' not in system_info:
+                            system_info['network_security'] = {}
+                        
+                        system_info['network_security'].update({
+                            'internal_services': internal_services,
+                            'external_tests': external_tests,
+                            'security_assessment': security_assessment
+                        })
+                        
+                        # Zeige Zusammenfassung
+                        risk_level = security_assessment.get('risk_level', 'unknown')
+                        exposed_count = len(security_assessment.get('exposed_services', []))
+                        issues_count = len(security_assessment.get('recommendations', []))
+                        
+                        console.print(f"[green]✅ Netzwerk-Sicherheitsanalyse abgeschlossen[/green]")
+                        console.print(f"[dim]📊 Risiko-Level: {risk_level.upper()}, {exposed_count} exponierte Services, {issues_count} Empfehlungen[/dim]")
+                        
+                    else:
+                        console.print(f"[yellow]⚠️ Keine lauschenden Ports gefunden[/yellow]")
+                else:
+                    console.print(f"[yellow]⚠️ Keine externe IP-Adresse gefunden[/yellow]")
+                    
+            except Exception as e:
+                console.print(f"[red]❌ Fehler bei Netzwerk-Sicherheitsanalyse: {e}[/red]")
+                console.print("[yellow]Analyse wird fortgesetzt ohne Netzwerk-Sicherheitsdaten[/yellow]")
         
         # Zeige Fehler-Zusammenfassung
         collector.print_error_summary()

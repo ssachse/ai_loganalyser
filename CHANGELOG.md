@@ -10,6 +10,7 @@ Alle wichtigen Änderungen an diesem Projekt werden in dieser Datei dokumentiert
 - **Externe Erreichbarkeitstests**: `test_external_accessibility()` mit Nmap, Banner-Grabbing und Service-Versionen
 - **Sicherheitsbewertung**: `assess_network_security()` mit Risiko-Level, Empfehlungen und Compliance-Problemen
 - **Chat-Integration**: Neue Shortcuts `network-security`, `exposed-services`, `port-scan`, `service-test`
+- **Automatische Netzwerk-Analyse**: `--include-network-security` Option für automatische Ausführung am Anfang
 - **Proxmox-Container-Analyse**: Detaillierte Container-Informationen mit CPU, Memory, Uptime und Netzwerk pro Node
 - **Erweiterte Sudo-Unterstützung**: Automatische Sudo-Erkennung und sichere Befehlsausführung
 - **Chat-Integration**: `proxmox-containers` Shortcut für gezielte Container-Abfragen
@@ -28,6 +29,8 @@ Alle wichtigen Änderungen an diesem Projekt werden in dieser Datei dokumentiert
 
 ### 📁 Neue Dateien
 - `test_network_security.py`: Test-Skript für Netzwerk-Sicherheitsanalyse
+- `test_network_security_detailed.py`: Detailliertes Test-Skript mit JSON-Export
+- `test_network_security_quick.py`: Schnelles Test-Skript für Überprüfung
 - `test_sudo_functionality.py`: Test-Skript für Sudo-Funktionalität
 
 ### 🔒 Sicherheit
