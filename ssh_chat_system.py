@@ -1154,6 +1154,22 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
     console.print("="*60)
     console.print(f"\n[dim]💡 {_('chat_tip')} ['q' to quit, 'm' -> Menü][/dim]")
 
+    # Zeige verfügbare Modelle und Empfehlungen
+    available_models = get_available_models()
+    if available_models:
+        sorted_models = sorted(available_models, key=lambda x: x.get('size', float('inf')))
+        fastest_model = sorted_models[0]
+        console.print(f"[green]✅ Schnellstes verfügbares Modell: {fastest_model['name']}[/green]")
+        
+        # Empfehle bessere Modelle wenn nötig
+        if fastest_model.get('size', 0) < 1 * 1024 * 1024 * 1024:  # < 1GB
+            console.print("[blue]💡 Für bessere Antworten empfehle ich:[/blue]")
+            console.print("[dim]   ollama pull llama3.2:3b[/dim]")
+            console.print("[dim]   ollama pull mistral:7b[/dim]")
+    else:
+        console.print("[yellow]⚠️  Keine Ollama-Modelle gefunden[/yellow]")
+        console.print("[blue]💡 Empfohlene Installation: ollama pull llama3.2:3b[/blue]")
+
     # Hinweis, dass die Analyse im Hintergrund läuft
     console.print(f"\n[dim]🤖 {_('analysis_running')} ({_('chat_tip')} {_('chat_you')} ...)[/dim]")
 
@@ -1608,45 +1624,51 @@ def get_available_models() -> List[Dict[str, Any]]:
 
 
 def select_best_model(complex_analysis: bool = False) -> str:
-    """Wähle das beste verfügbare Modell für System-Analyse aus."""
+    """Wähle das schnellste verfügbare Modell für System-Analyse aus."""
     models = get_available_models()
     
     if not models:
-        console.print("[yellow]⚠️  Keine Ollama-Modelle gefunden, verwende Standard[/yellow]")
+        console.print("[yellow]⚠️  Keine Ollama-Modelle gefunden[/yellow]")
+        console.print("[blue]💡 Empfohlene Installation: ollama pull llama3.2:3b[/blue]")
         return "llama2"  # Fallback auf Standard-Modell
     
+    # Sortiere Modelle nach Größe (kleinste = schnellste zuerst)
+    sorted_models = sorted(models, key=lambda x: x.get('size', float('inf')))
+    
     if complex_analysis:
-        # Für komplexe Analysen: Große Modelle bevorzugen
-        preferred_models = [
-            "llama3.2:70b", "llama3.2:8b", "llama3.1:70b", "llama3.1:8b",
-            "llama2:70b", "llama2:13b", "codellama:70b", "codellama:13b",
-            "mistral:7b", "mixtral:8x7b", "qwen2:72b", "qwen2:7b"
-        ]
-        model_type = "komplexe Analyse"
+        # Für komplexe Analysen: Suche nach mittleren/großen Modellen
+        medium_models = [m for m in sorted_models if m.get('size', 0) >= 3 * 1024 * 1024 * 1024]  # >= 3GB
+        if medium_models:
+            selected_model = medium_models[0]
+            console.print(f"[green]✅ Verwende Modell für komplexe Analyse: {selected_model['name']}[/green]")
+            
+            # Empfehle bessere Modelle für komplexe Analysen
+            if selected_model.get('size', 0) < 7 * 1024 * 1024 * 1024:  # < 7GB
+                console.print("[blue]💡 Für bessere komplexe Analysen empfehle ich:[/blue]")
+                console.print("[dim]   ollama pull llama3.2:8b[/dim]")
+                console.print("[dim]   ollama pull codellama:13b[/dim]")
+            
+            return selected_model['name']
+        else:
+            # Fallback auf kleinstes verfügbares Modell
+            selected_model = sorted_models[0]
+            console.print(f"[yellow]⚠️  Verwende kleinstes verfügbares Modell für komplexe Analyse: {selected_model['name']}[/yellow]")
+            console.print("[blue]💡 Für komplexe Analysen empfehle ich größere Modelle:[/blue]")
+            console.print("[dim]   ollama pull llama3.2:8b[/dim]")
+            console.print("[dim]   ollama pull codellama:13b[/dim]")
+            return selected_model['name']
     else:
-        # Für einfache Analysen: Kleine, schnelle Modelle bevorzugen
-        preferred_models = [
-            "llama3.2:3b", "llama3.1:3b", "llama2:7b", "codellama:7b",
-            "mistral:7b", "qwen2:7b", "llama3.2:8b", "llama3.1:8b"
-        ]
-        model_type = "schnelle Analyse"
-    
-    # Suche nach bevorzugten Modellen
-    for preferred in preferred_models:
-        for model in models:
-            if preferred in model['name']:
-                console.print(f"[green]✅ Verwende Modell für {model_type}: {model['name']}[/green]")
-                return model['name']
-    
-    # Fallback: Wähle das erste verfügbare Modell
-    if models:
-        fallback_model = models[0]['name']
-        console.print(f"[yellow]⚠️  Verwende verfügbares Modell: {fallback_model}[/yellow]")
-        return fallback_model
-    
-    # Letzter Fallback
-    console.print("[red]❌ Keine Modelle verfügbar, verwende Standard[/red]")
-    return "llama2"
+        # Für einfache Analysen: Verwende das schnellste (kleinste) Modell
+        selected_model = sorted_models[0]
+        console.print(f"[green]✅ Verwende schnellstes Modell: {selected_model['name']}[/green]")
+        
+        # Empfehle bessere Modelle wenn das aktuelle sehr klein ist
+        if selected_model.get('size', 0) < 1 * 1024 * 1024 * 1024:  # < 1GB
+            console.print("[blue]💡 Für bessere Antworten empfehle ich:[/blue]")
+            console.print("[dim]   ollama pull llama3.2:3b[/dim]")
+            console.print("[dim]   ollama pull mistral:7b[/dim]")
+        
+        return selected_model['name']
 
 
 def query_ollama(prompt: str, model: str = None, complex_analysis: bool = False) -> Optional[str]:
@@ -1691,16 +1713,23 @@ def query_ollama(prompt: str, model: str = None, complex_analysis: bool = False)
             return result.get('response', '').strip()
         elif response.status_code == 404:
             console.print(f"[red]❌ Modell '{model}' nicht gefunden. Verfügbare Modelle prüfen...[/red]")
-            # Versuche mit einem anderen Modell
+            # Versuche mit dem schnellsten verfügbaren Modell
             available_models = get_available_models()
             if available_models:
-                fallback_model = available_models[0]['name']
-                console.print(f"[yellow]⚠️  Versuche mit verfügbarem Modell: {fallback_model}[/yellow]")
+                # Sortiere nach Größe und wähle das schnellste
+                sorted_models = sorted(available_models, key=lambda x: x.get('size', float('inf')))
+                fallback_model = sorted_models[0]['name']
+                console.print(f"[yellow]⚠️  Verwende schnellstes verfügbares Modell: {fallback_model}[/yellow]")
                 data['model'] = fallback_model
                 response = requests.post(url, json=data, timeout=timeout)
                 if response.status_code == 200:
                     result = response.json()
                     return result.get('response', '').strip()
+            
+            # Wenn auch das nicht funktioniert, gib Empfehlungen
+            console.print("[blue]💡 Empfohlene Modelle installieren:[/blue]")
+            console.print("[dim]   ollama pull llama3.2:3b[/dim]")
+            console.print("[dim]   ollama pull mistral:7b[/dim]")
             return None
         else:
             console.print(f"[red]❌ Ollama-Fehler: {response.status_code}[/red]")
