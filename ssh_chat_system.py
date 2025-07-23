@@ -1111,7 +1111,7 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
             'cache_key': 'proxmox_storage'
         },
         'report': {
-            'question': get_text('shortcut_report'),
+            'question': 'Erstelle einen detaillierten Systembericht mit Handlungsanweisungen',
             'complex': True,
             'cache_key': 'system_report'
         },
