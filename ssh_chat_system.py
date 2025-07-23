@@ -1008,7 +1008,7 @@ class SSHLogCollector:
             console.print("[dim]Archiv gelöscht[/dim]")
 
 
-def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEntry], anomalies: List[Anomaly]):
+def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEntry], anomalies: List[Anomaly], args=None):
     """Startet interaktiven Chat mit Ollama"""
     
     system_context = create_system_context(system_info, log_entries, anomalies)
@@ -1154,29 +1154,27 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
     console.print("="*60)
     console.print(f"\n[dim]💡 {_('chat_tip')} ['q' to quit, 'm' -> Menü][/dim]")
 
-    # Zeige verfügbare Modelle und Empfehlungen
-    available_models = get_available_models()
-    if available_models:
-        # Prüfe auf qwen:0.5b für Menü
-        menu_model = None
-        for model in available_models:
-            if "qwen" in model['name'].lower() and "0.5b" in model['name']:
-                menu_model = model
-                break
-        
-        if menu_model:
-            console.print(f"[green]⚡ Ultraschnelles Menü-Modell verfügbar: {menu_model['name']}[/green]")
-        # qwen:0.5b ist bereits verfügbar, keine Empfehlung nötig
-        
-        # Zeige schnellstes Modell für normale Analysen
-        sorted_models = sorted(available_models, key=lambda x: x.get('size', float('inf')))
-        fastest_model = sorted_models[0]
-        console.print(f"[green]✅ Schnellstes Modell für Analysen: {fastest_model['name']}[/green]")
-        
-        # Keine Empfehlungen mehr nötig, da gute Modelle bereits verfügbar sind
-    else:
-        console.print("[yellow]⚠️  Keine Ollama-Modelle gefunden[/yellow]")
-        console.print("[blue]💡 Empfohlene Installation: ollama pull llama3.2:3b[/blue]")
+    # Zeige Modell-Info nur im Debug-Modus
+    if args and hasattr(args, 'debug') and args.debug:
+        available_models = get_available_models()
+        if available_models:
+            # Prüfe auf qwen:0.5b für Menü
+            menu_model = None
+            for model in available_models:
+                if "qwen" in model['name'].lower() and "0.5b" in model['name']:
+                    menu_model = model
+                    break
+            
+            if menu_model:
+                console.print(f"[green]⚡ Ultraschnelles Menü-Modell verfügbar: {menu_model['name']}[/green]")
+            
+            # Zeige schnellstes Modell für normale Analysen
+            sorted_models = sorted(available_models, key=lambda x: x.get('size', float('inf')))
+            fastest_model = sorted_models[0]
+            console.print(f"[green]✅ Schnellstes Modell für Analysen: {fastest_model['name']}[/green]")
+        else:
+            console.print("[yellow]⚠️  Keine Ollama-Modelle gefunden[/yellow]")
+            console.print("[blue]💡 Empfohlene Installation: ollama pull llama3.2:3b[/blue]")
 
     # Hinweis, dass die Analyse im Hintergrund läuft
     console.print(f"\n[dim]🤖 {_('analysis_running')} ({_('chat_tip')} {_('chat_you')} ...)[/dim]")
@@ -1256,19 +1254,13 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
 
             # Modell-Auswahl basierend auf Eingabe-Typ
             if shortcut_used:
-                # Für Shortcut-Erkennung: ultraschnelles Menü-Modell
-                menu_model = select_best_model(complex_analysis=False, for_menu=True)
-                console.print(f"[dim]⚡ Menü-Erkennung mit: {menu_model}[/dim]")
-                
                 # Für die eigentliche Analyse nach Shortcut: besseres Modell
                 if shortcut_info['complex']:
-                    analysis_model = select_best_model(complex_analysis=True, for_menu=False)
-                    console.print(f"[dim]🔍 Komplexe Analyse mit: {analysis_model}[/dim]")
+                    model = select_best_model(complex_analysis=True, for_menu=False)
+                    console.print(f"[dim]🔄 Wechsle zu komplexem Modell für detaillierte Analyse...[/dim]")
                 else:
-                    analysis_model = select_best_model(complex_analysis=False, for_menu=False)
-                    console.print(f"[dim]📊 Standard-Analyse mit: {analysis_model}[/dim]")
-                
-                model = analysis_model  # Verwende das bessere Modell für die Analyse
+                    model = select_best_model(complex_analysis=False, for_menu=False)
+                    console.print(f"[dim]🔄 Wechsle zu Standard-Modell für Analyse...[/dim]")
             else:
                 # Bestimme Modell-Komplexität für freie Fragen
                 complex_analysis = any(keyword in user_input.lower() for keyword in [
@@ -1278,16 +1270,18 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
                 ])
                 model = select_best_model(complex_analysis)
 
-            if shortcut_used:
-                if shortcut_info['complex']:
-                    model_type = _('chat_using_complex_model')
-                    console.print(f"[dim]🔍 {model_type}: {model}[/dim]")
+            # Zeige Modell-Info nur im Debug-Modus
+            if args and hasattr(args, 'debug') and args.debug:
+                if shortcut_used:
+                    if shortcut_info['complex']:
+                        model_type = _('chat_using_complex_model')
+                        console.print(f"[dim]🔍 {model_type}: {model}[/dim]")
+                    else:
+                        model_type = _('chat_using_model')
+                        console.print(f"[dim]📊 {model_type}: {model}[/dim]")
                 else:
-                    model_type = _('chat_using_model')
-                    console.print(f"[dim]📊 {model_type}: {model}[/dim]")
-            else:
-                model_type = _('chat_using_model') if not complex_analysis else _('chat_using_complex_model')
-                console.print(f"[dim]🤖 {model_type}: {model}[/dim]")
+                    model_type = _('chat_using_model') if not complex_analysis else _('chat_using_complex_model')
+                    console.print(f"[dim]🤖 {model_type}: {model}[/dim]")
 
             # Sende an Ollama
             console.print(f"[dim]🤔 {_('chat_thinking')}[/dim]")
@@ -1666,16 +1660,14 @@ def select_best_model(complex_analysis: bool = False, for_menu: bool = False) ->
     if for_menu:
         for model in models:
             if "qwen" in model['name'].lower() and "0.5b" in model['name']:
-                console.print(f"[green]⚡ Verwende ultraschnelles Menü-Modell: {model['name']}[/green]")
                 return model['name']
         
         # Fallback: Verwende das kleinste verfügbare Modell für Menü
         sorted_models = sorted(models, key=lambda x: x.get('size', float('inf')))
         selected_model = sorted_models[0]
-        console.print(f"[yellow]⚠️  Verwende schnellstes verfügbares Modell für Menü: {selected_model['name']}[/yellow]")
         return selected_model['name']
     
-    # Sortiere Modelle nach Größe (kleinste = schnellste zuerst)
+        # Sortiere Modelle nach Größe (kleinste = schnellste zuerst)
     sorted_models = sorted(models, key=lambda x: x.get('size', float('inf')))
     
     if complex_analysis:
@@ -1683,23 +1675,14 @@ def select_best_model(complex_analysis: bool = False, for_menu: bool = False) ->
         medium_models = [m for m in sorted_models if m.get('size', 0) >= 3 * 1024 * 1024 * 1024]  # >= 3GB
         if medium_models:
             selected_model = medium_models[0]
-            console.print(f"[green]✅ Verwende Modell für komplexe Analyse: {selected_model['name']}[/green]")
-            
-                    # Keine Empfehlungen mehr nötig, da gute Modelle bereits verfügbar sind
-            
             return selected_model['name']
         else:
             # Fallback auf kleinstes verfügbares Modell
             selected_model = sorted_models[0]
-            console.print(f"[yellow]⚠️  Verwende kleinstes verfügbares Modell für komplexe Analyse: {selected_model['name']}[/yellow]")
             return selected_model['name']
     else:
         # Für einfache Analysen: Verwende das schnellste (kleinste) Modell
         selected_model = sorted_models[0]
-        console.print(f"[green]✅ Verwende schnellstes Modell: {selected_model['name']}[/green]")
-        
-        # Keine Empfehlungen mehr nötig, da gute Modelle bereits verfügbar sind
-        
         return selected_model['name']
 
 
@@ -1788,6 +1771,7 @@ def main():
     parser.add_argument('--output', help='Ausgabe-Datei für Ergebnisse')
     parser.add_argument('--quick', action='store_true', help='Schnelle Analyse ohne detaillierte Datei-Suche')
     parser.add_argument('--no-logs', action='store_true', help='Überspringe Log-Sammlung (nur System-Info)')
+    parser.add_argument('--debug', action='store_true', help='Zeige Debug-Informationen (Modell-Auswahl, etc.)')
     
     args = parser.parse_args()
     
@@ -2165,7 +2149,7 @@ def main():
             console.print("[yellow]Keine Log-Einträge gefunden.[/yellow]")
             # Trotzdem Chat ermöglichen
             if Confirm.ask("\n[bold blue]Möchten Sie sich mit Ollama über das System unterhalten?"):
-                start_interactive_chat(system_info, analyzer.log_entries, analyzer.anomalies)
+                start_interactive_chat(system_info, analyzer.log_entries, analyzer.anomalies, args)
             return 0
         
         # Analysiere mit Ollama (nur wenn Logs vorhanden)
@@ -2205,7 +2189,7 @@ def main():
         
         # Interaktiver Ollama-Chat
         if Confirm.ask("\n[bold blue]Möchten Sie sich mit Ollama über das System unterhalten?"):
-            start_interactive_chat(system_info, analyzer.log_entries, analyzer.anomalies)
+            start_interactive_chat(system_info, analyzer.log_entries, analyzer.anomalies, args)
         
         return 0
         
