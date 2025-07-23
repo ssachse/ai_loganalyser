@@ -1759,6 +1759,129 @@ class SSHLogCollector:
         }
         return service_mapping.get(port, f'Unknown-{port}')
     
+    def _classify_ip_address(self, ip: str) -> Dict[str, Any]:
+        """Klassifiziert IP-Adressen nach RFC-Standards"""
+        import ipaddress
+        
+        try:
+            # Parse IP-Adresse
+            ip_obj = ipaddress.ip_address(ip)
+            
+            # IPv4-Klassifikation
+            if ip_obj.version == 4:
+                # RFC 1918 Private Addresses
+                if ip_obj.is_private:
+                    return {
+                        'type': 'private',
+                        'rfc': 'RFC 1918',
+                        'description': 'Private Netzwerk-Adresse',
+                        'risk_level': 'low',
+                        'explanation': 'Interne Adresse - kein externes Sicherheitsrisiko'
+                    }
+                
+                # RFC 6890 Special Purpose Addresses
+                elif ip_obj.is_loopback:
+                    return {
+                        'type': 'loopback',
+                        'rfc': 'RFC 6890',
+                        'description': 'Loopback-Adresse',
+                        'risk_level': 'none',
+                        'explanation': 'Lokale Loopback-Adresse - kein Netzwerkrisiko'
+                    }
+                elif ip_obj.is_link_local:
+                    return {
+                        'type': 'link_local',
+                        'rfc': 'RFC 6890',
+                        'description': 'Link-Local-Adresse',
+                        'risk_level': 'none',
+                        'explanation': 'Automatische Link-Local-Adresse - kein externes Risiko'
+                    }
+                elif ip_obj.is_multicast:
+                    return {
+                        'type': 'multicast',
+                        'rfc': 'RFC 5771',
+                        'description': 'Multicast-Adresse',
+                        'risk_level': 'low',
+                        'explanation': 'Multicast-Adresse - begrenztes Risiko'
+                    }
+                elif ip_obj.is_reserved:
+                    return {
+                        'type': 'reserved',
+                        'rfc': 'RFC 6890',
+                        'description': 'Reservierte Adresse',
+                        'risk_level': 'none',
+                        'explanation': 'Reservierte Adresse - kein Risiko'
+                    }
+                else:
+                    return {
+                        'type': 'public',
+                        'rfc': 'RFC 1918',
+                        'description': 'Öffentliche IP-Adresse',
+                        'risk_level': 'medium',
+                        'explanation': 'Öffentliche Adresse - extern erreichbar'
+                    }
+            
+            # IPv6-Klassifikation
+            else:
+                # RFC 4193 Unique Local Addresses
+                if ip_obj.is_private:
+                    return {
+                        'type': 'private',
+                        'rfc': 'RFC 4193',
+                        'description': 'Unique Local IPv6-Adresse',
+                        'risk_level': 'low',
+                        'explanation': 'Interne IPv6-Adresse - kein externes Sicherheitsrisiko'
+                    }
+                elif ip_obj.is_loopback:
+                    return {
+                        'type': 'loopback',
+                        'rfc': 'RFC 6890',
+                        'description': 'IPv6 Loopback-Adresse',
+                        'risk_level': 'none',
+                        'explanation': 'Lokale IPv6 Loopback-Adresse - kein Netzwerkrisiko'
+                    }
+                elif ip_obj.is_link_local:
+                    return {
+                        'type': 'link_local',
+                        'rfc': 'RFC 6890',
+                        'description': 'IPv6 Link-Local-Adresse',
+                        'risk_level': 'none',
+                        'explanation': 'Automatische IPv6 Link-Local-Adresse - kein externes Risiko'
+                    }
+                elif ip_obj.is_multicast:
+                    return {
+                        'type': 'multicast',
+                        'rfc': 'RFC 5771',
+                        'description': 'IPv6 Multicast-Adresse',
+                        'risk_level': 'low',
+                        'explanation': 'IPv6 Multicast-Adresse - begrenztes Risiko'
+                    }
+                elif ip_obj.is_reserved:
+                    return {
+                        'type': 'reserved',
+                        'rfc': 'RFC 6890',
+                        'description': 'Reservierte IPv6-Adresse',
+                        'risk_level': 'none',
+                        'explanation': 'Reservierte IPv6-Adresse - kein Risiko'
+                    }
+                else:
+                    return {
+                        'type': 'public',
+                        'rfc': 'RFC 4193',
+                        'description': 'Öffentliche IPv6-Adresse',
+                        'risk_level': 'medium',
+                        'explanation': 'Öffentliche IPv6-Adresse - extern erreichbar'
+                    }
+        
+        except ValueError:
+            return {
+                'type': 'invalid',
+                'rfc': 'N/A',
+                'description': 'Ungültige IP-Adresse',
+                'risk_level': 'unknown',
+                'explanation': 'Konnte IP-Adresse nicht parsen'
+            }
+    
     def test_external_accessibility(self, target_hosts: List, ports: List[int], include_dns: bool = False) -> Dict[str, Any]:
         """Testet externe Erreichbarkeit von allen IP-Adressen (EXTERNE Analyse)"""
         accessibility_results = {
@@ -2007,30 +2130,50 @@ class SSHLogCollector:
             exposed_services = external_ports.intersection(reachable_ports)
             security_assessment['exposed_services'] = list(exposed_services)
             
-            # Host-spezifische Expositionsanalyse
+            # Host-spezifische Expositionsanalyse mit IP-Klassifikation
             host_exposure = {}
+            host_classification = {}
+            public_hosts_only = {}
+            
             for host, ports in reachable_hosts.items():
                 if ports:
-                    host_exposure[host] = list(set(ports).intersection(external_ports))
+                    # Klassifiziere IP-Adresse
+                    ip_class = self._classify_ip_address(host)
+                    host_classification[host] = ip_class
+                    
+                    # Sammle alle exponierten Ports
+                    exposed_ports = list(set(ports).intersection(external_ports))
+                    host_exposure[host] = exposed_ports
+                    
+                    # Nur öffentliche IPs für externe Sicherheitsbewertung
+                    if ip_class['type'] == 'public':
+                        public_hosts_only[host] = exposed_ports
             
             security_assessment['host_exposure'] = host_exposure
+            security_assessment['host_classification'] = host_classification
+            security_assessment['public_host_exposure'] = public_hosts_only
             
-            # Risiko-Bewertung
+            # Risiko-Bewertung (nur für öffentliche IPs)
             risk_score = 0
             
-            # Kritische Services
+            # Berücksichtige nur öffentliche IPs für externe Sicherheitsbewertung
+            public_exposed_services = set()
+            for host, ports in public_hosts_only.items():
+                public_exposed_services.update(ports)
+            
+            # Kritische Services (nur auf öffentlichen IPs)
             critical_services = {22, 23, 3389}  # SSH, Telnet, RDP
-            if exposed_services.intersection(critical_services):
+            if public_exposed_services.intersection(critical_services):
                 risk_score += 3
             
-            # Datenbank-Services
+            # Datenbank-Services (nur auf öffentlichen IPs)
             database_services = {3306, 5432, 1433, 1521}  # MySQL, PostgreSQL, MSSQL, Oracle
-            if exposed_services.intersection(database_services):
+            if public_exposed_services.intersection(database_services):
                 risk_score += 2
             
-            # Web-Services
+            # Web-Services (nur auf öffentlichen IPs)
             web_services = {80, 443, 8080, 8443}
-            if exposed_services.intersection(web_services):
+            if public_exposed_services.intersection(web_services):
                 risk_score += 1
             
             # Vulnerability-Indikatoren
@@ -2047,34 +2190,46 @@ class SSHLogCollector:
             else:
                 security_assessment['risk_level'] = 'low'
             
-            # Empfehlungen generieren
+            # Empfehlungen generieren (nur für öffentliche IPs)
             recommendations = []
             
-            if 22 in exposed_services:
-                recommendations.append("SSH ist extern erreichbar - Prüfe Key-basierte Authentifizierung")
+            # Zähle private vs. öffentliche IPs
+            private_hosts = sum(1 for host, class_info in host_classification.items() 
+                              if class_info['type'] == 'private')
+            public_hosts = sum(1 for host, class_info in host_classification.items() 
+                             if class_info['type'] == 'public')
             
-            if exposed_services.intersection(database_services):
-                recommendations.append("Datenbank-Services sind extern erreichbar - Firewall-Regeln prüfen")
+            if public_hosts > 0:
+                if 22 in public_exposed_services:
+                    recommendations.append("SSH ist auf öffentlichen IPs erreichbar - Prüfe Key-basierte Authentifizierung")
+                
+                if public_exposed_services.intersection(database_services):
+                    recommendations.append("Datenbank-Services sind auf öffentlichen IPs erreichbar - Firewall-Regeln prüfen")
+                
+                if public_exposed_services.intersection(web_services):
+                    recommendations.append("Web-Services sind auf öffentlichen IPs erreichbar - HTTPS erzwingen")
+                
+                if vulnerability_count > 0:
+                    recommendations.append(f"{vulnerability_count} Sicherheitsprobleme auf öffentlichen IPs gefunden - Updates prüfen")
+            else:
+                recommendations.append("Keine öffentlichen IPs erreichbar - System ist intern isoliert")
             
-            if exposed_services.intersection(web_services):
-                recommendations.append("Web-Services sind extern erreichbar - HTTPS erzwingen")
-            
-            if vulnerability_count > 0:
-                recommendations.append(f"{vulnerability_count} Sicherheitsprobleme gefunden - Updates prüfen")
+            if private_hosts > 0:
+                recommendations.append(f"{private_hosts} private IP-Adressen gefunden - Normales internes Netzwerk")
             
             if not internal_services.get('firewall_status'):
                 recommendations.append("Keine Firewall-Konfiguration gefunden - Firewall aktivieren")
             
             security_assessment['recommendations'] = recommendations
             
-            # Compliance-Probleme
+            # Compliance-Probleme (nur für öffentliche IPs)
             compliance_issues = []
             
-            if 23 in exposed_services:  # Telnet
-                compliance_issues.append("Telnet ist aktiv - Nicht konform mit Sicherheitsstandards")
+            if 23 in public_exposed_services:  # Telnet
+                compliance_issues.append("Telnet ist auf öffentlichen IPs aktiv - Nicht konform mit Sicherheitsstandards")
             
-            if exposed_services.intersection(database_services):
-                compliance_issues.append("Datenbank-Services extern erreichbar - Datenschutz-Risiko")
+            if public_exposed_services.intersection(database_services):
+                compliance_issues.append("Datenbank-Services auf öffentlichen IPs erreichbar - Datenschutz-Risiko")
             
             security_assessment['compliance_issues'] = compliance_issues
             
@@ -3597,18 +3752,49 @@ def create_system_context(system_info: Dict[str, Any], log_entries: List[LogEntr
             
             if 'host_exposure' in assessment:
                 host_exposure = assessment['host_exposure']
+                host_classification = assessment.get('host_classification', {})
                 if host_exposure:
                     context_parts.append("Host-spezifische Exposition:")
                     for host, ports in host_exposure.items():
                         if ports:
-                            context_parts.append(f"  {host}: {', '.join(map(str, ports))}")
+                            # IP-Klassifikation anzeigen
+                            ip_class = host_classification.get(host, {})
+                            ip_type = ip_class.get('type', 'unknown')
+                            ip_rfc = ip_class.get('rfc', 'N/A')
+                            ip_explanation = ip_class.get('explanation', '')
+                            
+                            if ip_type == 'private':
+                                context_parts.append(f"  **{host}:** {', '.join(map(str, ports))} ({ip_rfc} - {ip_explanation})")
+                            elif ip_type == 'public':
+                                context_parts.append(f"  **{host}:** {', '.join(map(str, ports))} ({ip_rfc} - {ip_explanation})")
+                            else:
+                                context_parts.append(f"  **{host}:** {', '.join(map(str, ports))} ({ip_type})")
+                    
+                    # Zusammenfassung der IP-Typen
+                    private_count = sum(1 for host, class_info in host_classification.items() 
+                                      if class_info.get('type') == 'private')
+                    public_count = sum(1 for host, class_info in host_classification.items() 
+                                     if class_info.get('type') == 'public')
+                    
+                    if private_count > 0:
+                        context_parts.append(f"  📍 {private_count} private IP-Adressen (RFC 1918/4193) - Normales internes Netzwerk")
+                    if public_count > 0:
+                        context_parts.append(f"  🌐 {public_count} öffentliche IP-Adressen - Extern erreichbar")
             
             if 'recommendations' in assessment:
                 recommendations = assessment['recommendations']
                 if recommendations:
                     context_parts.append("Sicherheitsempfehlungen:")
                     for rec in recommendations:
-                        context_parts.append(f"  • {rec}")
+                        # Markiere wichtige Empfehlungen
+                        if 'öffentlichen IPs' in rec:
+                            context_parts.append(f"  ⚠️  {rec}")
+                        elif 'private IP-Adressen' in rec:
+                            context_parts.append(f"  ℹ️  {rec}")
+                        elif 'intern isoliert' in rec:
+                            context_parts.append(f"  ✅ {rec}")
+                        else:
+                            context_parts.append(f"  • {rec}")
             
             if 'compliance_issues' in assessment:
                 compliance_issues = assessment['compliance_issues']
