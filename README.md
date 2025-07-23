@@ -1,6 +1,6 @@
-# AI Log-Analyzer mit Kubernetes-Unterstützung
+# AI Log-Analyzer mit Docker, Mailserver und Kubernetes-Unterstützung
 
-Ein intelligenter SSH-basierter Linux-Log-Analyzer mit integriertem Ollama-Chat und Kubernetes-Cluster-Analyse.
+Ein intelligenter SSH-basierter Linux-Log-Analyzer mit integriertem Ollama-Chat, Docker-Container-Analyse, Mailserver-Überwachung und Kubernetes-Cluster-Analyse.
 
 ## 🌍 **Dynamische AI-gesteuerte Internationalisierung**
 - **POSIX-konform**: Verwendet Standard-gettext ohne externe Abhängigkeiten
@@ -27,6 +27,22 @@ Ein intelligenter SSH-basierter Linux-Log-Analyzer mit integriertem Ollama-Chat 
 - **Problem-Erkennung**: Nicht-ready Nodes, nicht-running Pods, kritische Events
 - **Ressourcen-Monitoring**: Node- und Pod-Ressourcen-Auslastung
 - **Storage-Analyse**: Persistent Volumes und deren Status
+
+### 🐳 **Docker-Container-Analyse**
+- **Automatische Erkennung**: Prüft Docker-Installation und -Daemon
+- **Container-Überwachung**: Laufende und gestoppte Container
+- **Image-Management**: Verfügbare Images und ungenutzte Images
+- **Volume-Überwachung**: Docker-Volumes und deren Status
+- **Netzwerk-Analyse**: Docker-Netzwerke und deren Konfiguration
+- **Problem-Erkennung**: Gestoppte Container, ungenutzte Ressourcen
+
+### 📧 **Mailserver-Analyse**
+- **Mailcow-Integration**: Container-Status, Logs, Konfiguration
+- **Postfix-Analyse**: Service-Status, Queue, Konfiguration
+- **Andere Mailserver**: Dovecot, Exim, Sendmail Erkennung
+- **Queue-Überwachung**: E-Mail-Queue-Status und -Probleme
+- **Log-Analyse**: Mailserver-Logs und Fehler-Erkennung
+- **Spam/Blacklist-Monitoring**: Spam- und Blacklist-Probleme
 
 ### 🤖 **Intelligenter Ollama-Chat**
 - **Dynamische Modell-Auswahl**: Intelligente Auswahl basierend auf Komplexität
@@ -135,6 +151,7 @@ python3 ssh_chat_system.py user@hostname --keep-files
 
 ### Chat-Kürzelwörter
 ```
+System:
 services    - Welche Services laufen auf dem System?
 storage     - Wie ist der Speicherplatz?
 security    - Gibt es Sicherheitsprobleme?
@@ -142,16 +159,35 @@ performance - Wie ist die System-Performance?
 users       - Welche Benutzer sind aktiv?
 updates     - Gibt es verfügbare System-Updates?
 logs        - Was zeigen die Logs?
+
+Kubernetes:
 k8s         - Wie ist der Kubernetes-Cluster-Status?
 k8s-problems- Welche Kubernetes-Probleme gibt es?
 k8s-pods    - Welche Pods laufen im Cluster?
 k8s-nodes   - Wie ist der Node-Status?
 k8s-resources- Wie ist die Ressourcen-Auslastung?
+
+Proxmox:
 proxmox     - Wie ist der Proxmox VE-Status?
 proxmox-problems- Welche Proxmox-Probleme gibt es?
 proxmox-vms - Welche VMs laufen auf Proxmox?
 proxmox-containers- Welche Container laufen auf Proxmox?
 proxmox-storage- Wie ist der Proxmox-Speicherplatz?
+
+Docker:
+docker      - Wie ist der Docker-Status und welche Container laufen?
+docker-problems- Welche Docker-Probleme gibt es?
+docker-containers- Welche Docker-Container laufen?
+docker-images- Welche Docker-Images sind installiert?
+
+Mailserver:
+mailservers - Welche Mailserver sind installiert und aktiv?
+mailcow     - Wie ist der Mailcow-Status?
+mailcow-problems- Welche Mailcow-Probleme gibt es?
+postfix     - Wie ist der Postfix-Status?
+postfix-problems- Welche Postfix-Probleme gibt es?
+
+Berichte & Tools:
 report      - Erstelle einen detaillierten Systembericht mit Handlungsanweisungen
 help        - Zeige verfügbare Kürzelwörter
 ```
@@ -177,6 +213,20 @@ help        - Zeige verfügbare Kürzelwörter
 - **Automatische Erkennung**: Prüft `kubectl` Verfügbarkeit
 - **Berechtigungen**: Erfordert Cluster-Zugriff
 - **Fehlerbehandlung**: Gruppierte kubectl-Fehler
+
+### Docker-Analyse
+- **Automatische Erkennung**: Prüft `docker` Verfügbarkeit
+- **Berechtigungen**: Erfordert Docker-Gruppen-Mitgliedschaft
+- **Container-Überwachung**: Laufende und gestoppte Container
+- **Image-Management**: Verfügbare und ungenutzte Images
+- **Volume-Überwachung**: Docker-Volumes und deren Status
+
+### Mailserver-Analyse
+- **Mailcow-Erkennung**: Prüft `/opt/mailcow-dockerized/` Verzeichnis
+- **Postfix-Erkennung**: Prüft `postfix` Service und Konfiguration
+- **Andere Mailserver**: Automatische Erkennung von Dovecot, Exim, Sendmail
+- **Log-Analyse**: Mailserver-Logs und Fehler-Erkennung
+- **Queue-Überwachung**: E-Mail-Queue-Status und -Probleme
 
 ### 📊 **Automatische Berichterstellung**
 - **CRAFT-Prompt**: Professioneller Enterprise-Architekt-Prompt
@@ -228,6 +278,36 @@ Kubernetes control plane is running at https://142.132.176.3:6443
    • Log-Datei-Zugriff
 
 💡 Tipp: Verwenden Sie einen Benutzer mit erweiterten Rechten für vollständige Analyse.
+```
+
+### Docker-Container-Analyse
+```
+🐳 Docker-Container-Analyse
+============================================================
+✅ Docker erkannt und analysiert
+📋 Version: Docker version 20.10.21
+📋 Laufende Container gefunden
+📋 Alle Container gefunden
+📋 Docker-Images gefunden
+📋 System-Nutzung gefunden
+
+⚠️  2 Probleme gefunden:
+- Gestoppte Container: container1, container2
+- Ungenutzte Images: image1, image2
+```
+
+### Mailserver-Analyse
+```
+📧 Mailserver-Analyse
+============================================================
+✅ Mailserver erkannt und analysiert
+📧 Mailcow erkannt
+  📋 Version: 2023.01
+  📋 Status verfügbar
+📧 Postfix erkannt
+  📋 Version: postfix-3.6.4
+  📋 Status verfügbar
+  📋 Queue-Status verfügbar
 ```
 
 ### 📄 **Automatische Berichterstellung**
