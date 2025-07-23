@@ -79,11 +79,19 @@ class I18n:
             # Übersetzungsfunktion installieren
             self.translation.install()
             
+            # Teste ob Übersetzungen funktionieren
+            test_translation = self.translation.gettext('chat_title')
+            if test_translation == 'chat_title':
+                print(f"Warning: Translations not loaded properly for {self.current_language}")
+                # Versuche Fallback auf Fallback-Dictionary
+                self._load_fallback_translations()
+            
         except Exception as e:
             # Fallback: Verwende Standard-gettext
             print(f"Warning: Could not load translations: {e}")
             self.translation = gettext.NullTranslations()
             self.translation.install()
+            self._load_fallback_translations()
     
     def _load_dynamic_translations(self):
         """Lädt dynamisch generierte Übersetzungen"""
@@ -94,6 +102,14 @@ class I18n:
                     self.dynamic_translations = json.load(f)
         except Exception:
             self.dynamic_translations = {}
+    
+    def _load_fallback_translations(self):
+        """Lädt Fallback-Übersetzungen wenn gettext nicht funktioniert"""
+        try:
+            fallback_dict = self._get_fallback_translation_dict(self.current_language)
+            self.fallback_translations = fallback_dict
+        except Exception:
+            self.fallback_translations = {}
     
     def _save_dynamic_translations(self):
         """Speichert dynamisch generierte Übersetzungen"""
@@ -322,6 +338,10 @@ Text: "{string}"
     
     def _get_fallback_translation(self, key: str) -> str:
         """Fallback-Übersetzungen wenn gettext nicht funktioniert"""
+        # Prüfe geladene Fallback-Übersetzungen
+        if hasattr(self, 'fallback_translations') and key in self.fallback_translations:
+            return self.fallback_translations[key]
+        
         # Prüfe zuerst dynamische Übersetzungen
         if self.current_language in self.dynamic_translations:
             dynamic_trans = self.dynamic_translations[self.current_language]['translations']
@@ -463,6 +483,16 @@ Text: "{string}"
 
 # Globale Instanz
 i18n = I18n()
+
+# Stelle sicher, dass die Übersetzungen geladen sind
+try:
+    # Teste ob Übersetzungen funktionieren
+    test_translation = i18n.get('chat_title')
+    if test_translation == 'chat_title':
+        print("Warning: Translations not loaded, forcing reload...")
+        i18n._load_fallback_translations()
+except Exception as e:
+    print(f"Warning: Could not initialize translations: {e}")
 
 def _(key: str, **kwargs) -> str:
     """Kurze Funktion für Übersetzungen"""

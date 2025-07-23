@@ -1011,6 +1011,16 @@ class SSHLogCollector:
 def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEntry], anomalies: List[Anomaly], args=None):
     """Startet interaktiven Chat mit Ollama"""
     
+    # Stelle sicher, dass die Übersetzungen geladen sind
+    from i18n import i18n
+    try:
+        test_translation = i18n.get('chat_title')
+        if test_translation == 'chat_title':
+            print("Warning: Translations not loaded, forcing reload...")
+            i18n._load_fallback_translations()
+    except Exception as e:
+        print(f"Warning: Could not initialize translations: {e}")
+    
     system_context = create_system_context(system_info, log_entries, anomalies)
     chat_history = []
     response_cache = {}
