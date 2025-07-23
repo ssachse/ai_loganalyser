@@ -15,7 +15,7 @@ from typing import List, Dict, Any, Optional
 import subprocess
 import argparse
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn, TaskID
 from rich.table import Table
 from rich.panel import Panel
 from rich.prompt import Prompt, Confirm
@@ -31,6 +31,45 @@ from i18n import i18n
 i18n.initialize_dynamic_translation()
 
 console = Console()
+
+class ProgressTracker:
+    """Fortschrittsanzeige für lange Operationen"""
+    
+    def __init__(self, description: str, total_steps: int = 100):
+        self.description = description
+        self.total_steps = total_steps
+        self.current_step = 0
+        self.start_time = time.time()
+        self.progress = Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TimeElapsedColumn(),
+            console=console
+        )
+        self.task_id = None
+    
+    def __enter__(self):
+        self.progress.start()
+        self.task_id = self.progress.add_task(self.description, total=self.total_steps)
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.progress.stop()
+    
+    def update(self, step: int = 1, description: str = None):
+        """Aktualisiert den Fortschritt"""
+        self.current_step += step
+        if self.task_id is not None:
+            self.progress.update(self.task_id, completed=self.current_step)
+            if description:
+                self.progress.update(self.task_id, description=description)
+    
+    def set_description(self, description: str):
+        """Setzt eine neue Beschreibung"""
+        if self.task_id is not None:
+            self.progress.update(self.task_id, description=description)
 
 class SSHLogCollector:
     """SSH-basierter Log-Sammler mit System-SSH"""
@@ -811,145 +850,158 @@ class SSHLogCollector:
         if not proxmox_check:
             return proxmox_info
         
-        console.print("[dim]🖥️  Analysiere Proxmox VE...[/dim]")
-        
-        try:
-            # Proxmox-Version
-            version = self.execute_remote_command('pveversion -v')
-            if version:
-                proxmox_info['proxmox_version'] = version
-            
-            # Cluster-Status
-            cluster_status = self.execute_remote_command('pvesh get /cluster/status')
-            if cluster_status:
-                proxmox_info['cluster_status'] = cluster_status
-            
-            # Nodes
-            nodes = self.execute_remote_command('pvesh get /nodes')
-            if nodes:
-                proxmox_info['nodes'] = nodes
-            
-            # Node-Details (erste 3 Nodes)
-            node_details = {}
-            for i in range(3):  # Prüfe erste 3 Nodes
-                node_name = self.execute_remote_command(f'pvesh get /nodes | grep -o "node[0-9]*" | head -{i+1} | tail -1')
-                if node_name:
-                    node_name = node_name.strip()
-                    # Node-Status
-                    status = self.execute_remote_command(f'pvesh get /nodes/{node_name}/status')
-                    if status:
-                        node_details[f'{node_name}_status'] = status
+        # Verwende Fortschrittsanzeige für Proxmox-Analyse
+        with ProgressTracker("🖥️  Analysiere Proxmox VE", total_steps=15) as progress:
+            try:
+                # Proxmox-Version
+                progress.update(1, "📋 Prüfe Proxmox-Version...")
+                version = self.execute_remote_command('pveversion -v')
+                if version:
+                    proxmox_info['proxmox_version'] = version
+                
+                # Cluster-Status
+                progress.update(1, "🔗 Prüfe Cluster-Status...")
+                cluster_status = self.execute_remote_command('pvesh get /cluster/status')
+                if cluster_status:
+                    proxmox_info['cluster_status'] = cluster_status
+                
+                # Nodes
+                progress.update(1, "🖥️  Lade Node-Liste...")
+                nodes = self.execute_remote_command('pvesh get /nodes')
+                if nodes:
+                    proxmox_info['nodes'] = nodes
+                
+                # Node-Details (erste 3 Nodes)
+                node_details = {}
+                for i in range(3):  # Prüfe erste 3 Nodes
+                    progress.update(1, f"📊 Analysiere Node {i+1}/3...")
+                    node_name = self.execute_remote_command(f'pvesh get /nodes | grep -o "node[0-9]*" | head -{i+1} | tail -1')
+                    if node_name:
+                        node_name = node_name.strip()
+                        # Node-Status
+                        status = self.execute_remote_command(f'pvesh get /nodes/{node_name}/status')
+                        if status:
+                            node_details[f'{node_name}_status'] = status
+                        
+                        # VMs auf diesem Node
+                        vms = self.execute_remote_command(f'pvesh get /nodes/{node_name}/qemu')
+                        if vms:
+                            node_details[f'{node_name}_vms'] = vms
+                        
+                        # Container auf diesem Node
+                        containers = self.execute_remote_command(f'pvesh get /nodes/{node_name}/lxc')
+                        if containers:
+                            node_details[f'{node_name}_containers'] = containers
+                
+                if node_details:
+                    proxmox_info['node_details'] = node_details
+                
+                # Storage-Informationen
+                progress.update(1, "💾 Prüfe Storage-Status...")
+                storage = self.execute_remote_command('pvesh get /storage')
+                if storage:
+                    proxmox_info['storage'] = storage
+                
+                # Netzwerk-Informationen
+                progress.update(1, "🌐 Prüfe Netzwerk-Konfiguration...")
+                network = self.execute_remote_command('pvesh get /cluster/config')
+                if network:
+                    proxmox_info['network_config'] = network
+                
+                # Probleme identifizieren
+                progress.update(1, "🔍 Suche nach Problemen...")
+                problems = []
+                
+                # Prüfe auf nicht-online Nodes
+                offline_nodes = self.execute_remote_command('pvesh get /nodes | grep -v "online"')
+                if offline_nodes:
+                    problems.append(f"Offline Nodes:\n{offline_nodes}")
+                
+                # Prüfe auf gestoppte VMs
+                stopped_vms = self.execute_remote_command('pvesh get /nodes --output-format=json | jq -r ".[] | .node" | head -3 | while read node; do pvesh get /nodes/$node/qemu --output-format=json | jq -r ".[] | select(.status != \"running\") | .name" 2>/dev/null; done')
+                if stopped_vms:
+                    problems.append(f"Gestoppte VMs:\n{stopped_vms}")
+                
+                # Prüfe auf gestoppte Container
+                stopped_containers = self.execute_remote_command('pvesh get /nodes --output-format=json | jq -r ".[] | .node" | head -3 | while read node; do pvesh get /nodes/$node/lxc --output-format=json | jq -r ".[] | select(.status != \"running\") | .name" 2>/dev/null; done')
+                if stopped_containers:
+                    problems.append(f"Gestoppte Container:\n{stopped_containers}")
+                
+                # Prüfe auf Storage-Probleme
+                storage_problems = self.execute_remote_command('pvesh get /storage | grep -i "error\|failed\|unavailable"')
+                if storage_problems:
+                    problems.append(f"Storage-Probleme:\n{storage_problems}")
+                
+                # Prüfe auf Backup-Status
+                progress.update(1, "💾 Prüfe Backup-Status...")
+                backup_status = self.execute_remote_command('pvesh get /nodes --output-format=json | jq -r ".[] | .node" | head -3 | while read node; do pvesh get /nodes/$node/tasks --output-format=json | jq -r ".[] | select(.type == \"vzdump\") | select(.status != \"OK\") | .id" 2>/dev/null; done')
+                if backup_status:
+                    problems.append(f"Backup-Probleme:\n{backup_status}")
+                
+                # Prüfe auf Ressourcen-Auslastung
+                progress.update(1, "📊 Analysiere Ressourcen-Auslastung...")
+                resource_usage = self.execute_remote_command('pvesh get /nodes --output-format=json | jq -r ".[] | .node" | head -3 | while read node; do echo "=== $node ==="; pvesh get /nodes/$node/status --output-format=json | jq -r ".cpuinfo | .cpus, .model" 2>/dev/null; pvesh get /nodes/$node/status --output-format=json | jq -r ".memory | .total, .used, .free" 2>/dev/null; done')
+                if resource_usage:
+                    proxmox_info['resource_usage'] = resource_usage
+                
+                # Prüfe auf HA-Status (falls verfügbar)
+                progress.update(1, "🔄 Prüfe HA-Status...")
+                ha_status = self.execute_remote_command('pvesh get /cluster/ha/status')
+                if ha_status:
+                    proxmox_info['ha_status'] = ha_status
                     
-                    # VMs auf diesem Node
-                    vms = self.execute_remote_command(f'pvesh get /nodes/{node_name}/qemu')
-                    if vms:
-                        node_details[f'{node_name}_vms'] = vms
+                    # Prüfe auf HA-Probleme
+                    ha_problems = self.execute_remote_command('pvesh get /cluster/ha/status | grep -i "error\|failed\|stopped"')
+                    if ha_problems:
+                        problems.append(f"HA-Probleme:\n{ha_problems}")
+                
+                # Prüfe auf ZFS-Status (falls verwendet)
+                progress.update(1, "💾 Prüfe ZFS-Status...")
+                zfs_status = self.execute_remote_command('zpool status')
+                if zfs_status:
+                    proxmox_info['zfs_status'] = zfs_status
                     
-                    # Container auf diesem Node
-                    containers = self.execute_remote_command(f'pvesh get /nodes/{node_name}/lxc')
-                    if containers:
-                        node_details[f'{node_name}_containers'] = containers
-            
-            if node_details:
-                proxmox_info['node_details'] = node_details
-            
-            # Storage-Informationen
-            storage = self.execute_remote_command('pvesh get /storage')
-            if storage:
-                proxmox_info['storage'] = storage
-            
-            # Netzwerk-Informationen
-            network = self.execute_remote_command('pvesh get /cluster/config')
-            if network:
-                proxmox_info['network_config'] = network
-            
-            # Probleme identifizieren
-            problems = []
-            
-            # Prüfe auf nicht-online Nodes
-            offline_nodes = self.execute_remote_command('pvesh get /nodes | grep -v "online"')
-            if offline_nodes:
-                problems.append(f"Offline Nodes:\n{offline_nodes}")
-            
-            # Prüfe auf gestoppte VMs
-            stopped_vms = self.execute_remote_command('pvesh get /nodes --output-format=json | jq -r ".[] | .node" | head -3 | while read node; do pvesh get /nodes/$node/qemu --output-format=json | jq -r ".[] | select(.status != \"running\") | .name" 2>/dev/null; done')
-            if stopped_vms:
-                problems.append(f"Gestoppte VMs:\n{stopped_vms}")
-            
-            # Prüfe auf gestoppte Container
-            stopped_containers = self.execute_remote_command('pvesh get /nodes --output-format=json | jq -r ".[] | .node" | head -3 | while read node; do pvesh get /nodes/$node/lxc --output-format=json | jq -r ".[] | select(.status != \"running\") | .name" 2>/dev/null; done')
-            if stopped_containers:
-                problems.append(f"Gestoppte Container:\n{stopped_containers}")
-            
-            # Prüfe auf Storage-Probleme
-            storage_problems = self.execute_remote_command('pvesh get /storage | grep -i "error\|failed\|unavailable"')
-            if storage_problems:
-                problems.append(f"Storage-Probleme:\n{storage_problems}")
-            
-            # Prüfe auf Backup-Status
-            backup_status = self.execute_remote_command('pvesh get /nodes --output-format=json | jq -r ".[] | .node" | head -3 | while read node; do pvesh get /nodes/$node/tasks --output-format=json | jq -r ".[] | select(.type == \"vzdump\") | select(.status != \"OK\") | .id" 2>/dev/null; done')
-            if backup_status:
-                problems.append(f"Backup-Probleme:\n{backup_status}")
-            
-            # Prüfe auf Ressourcen-Auslastung
-            resource_usage = self.execute_remote_command('pvesh get /nodes --output-format=json | jq -r ".[] | .node" | head -3 | while read node; do echo "=== $node ==="; pvesh get /nodes/$node/status --output-format=json | jq -r ".cpuinfo | .cpus, .model" 2>/dev/null; pvesh get /nodes/$node/status --output-format=json | jq -r ".memory | .total, .used, .free" 2>/dev/null; done')
-            if resource_usage:
-                proxmox_info['resource_usage'] = resource_usage
-            
-            # Prüfe auf HA-Status (falls verfügbar)
-            ha_status = self.execute_remote_command('pvesh get /cluster/ha/status')
-            if ha_status:
-                proxmox_info['ha_status'] = ha_status
+                    # Prüfe auf ZFS-Probleme
+                    zfs_problems = self.execute_remote_command('zpool status | grep -i "degraded\|faulted\|offline"')
+                    if zfs_problems:
+                        problems.append(f"ZFS-Probleme:\n{zfs_problems}")
                 
-                # Prüfe auf HA-Probleme
-                ha_problems = self.execute_remote_command('pvesh get /cluster/ha/status | grep -i "error\|failed\|stopped"')
-                if ha_problems:
-                    problems.append(f"HA-Probleme:\n{ha_problems}")
-            
-            # Prüfe auf ZFS-Status (falls verwendet)
-            zfs_status = self.execute_remote_command('zpool status')
-            if zfs_status:
-                proxmox_info['zfs_status'] = zfs_status
+                # Prüfe auf Ceph-Status (falls verwendet)
+                progress.update(1, "🔄 Prüfe Ceph-Status...")
+                ceph_status = self.execute_remote_command('ceph status')
+                if ceph_status:
+                    proxmox_info['ceph_status'] = ceph_status
+                    
+                    # Prüfe auf Ceph-Probleme
+                    ceph_problems = self.execute_remote_command('ceph status | grep -i "health\|error\|warning"')
+                    if ceph_problems:
+                        problems.append(f"Ceph-Probleme:\n{ceph_problems}")
                 
-                # Prüfe auf ZFS-Probleme
-                zfs_problems = self.execute_remote_command('zpool status | grep -i "degraded\|faulted\|offline"')
-                if zfs_problems:
-                    problems.append(f"ZFS-Probleme:\n{zfs_problems}")
-            
-            # Prüfe auf Ceph-Status (falls verwendet)
-            ceph_status = self.execute_remote_command('ceph status')
-            if ceph_status:
-                proxmox_info['ceph_status'] = ceph_status
+                # Speichere identifizierte Probleme
+                if problems:
+                    proxmox_info['problems'] = problems
+                    proxmox_info['problems_count'] = len(problems)
                 
-                # Prüfe auf Ceph-Probleme
-                ceph_problems = self.execute_remote_command('ceph status | grep -i "health\|error\|warning"')
-                if ceph_problems:
-                    problems.append(f"Ceph-Probleme:\n{ceph_problems}")
-            
-            # Speichere identifizierte Probleme
-            if problems:
-                proxmox_info['problems'] = problems
-                proxmox_info['problems_count'] = len(problems)
-            
-            # Prüfe auf Proxmox-Tools
-            tools_check = {}
-            tools = ['qm', 'pct', 'pvesm', 'pveceph']
-            for tool in tools:
-                tool_path = self.execute_remote_command(f'which {tool}')
-                if tool_path:
-                    tools_check[tool] = True
-            
-            if tools_check:
-                proxmox_info['available_tools'] = tools_check
-            
-            if proxmox_info:
-                proxmox_info['proxmox_detected'] = True
-                console.print("[green]✅ Proxmox VE gefunden und analysiert[/green]")
-            else:
-                console.print("[yellow]⚠️  pvesh verfügbar, aber keine Proxmox-Daten erreichbar[/yellow]")
+                # Prüfe auf Proxmox-Tools
+                progress.update(1, "🔧 Prüfe Proxmox-Tools...")
+                tools_check = {}
+                tools = ['qm', 'pct', 'pvesm', 'pveceph']
+                for tool in tools:
+                    tool_path = self.execute_remote_command(f'which {tool}')
+                    if tool_path:
+                        tools_check[tool] = True
                 
-        except Exception as e:
-            console.print(f"[yellow]⚠️  Fehler bei Proxmox-Analyse: {str(e)[:100]}[/yellow]")
+                if tools_check:
+                    proxmox_info['available_tools'] = tools_check
+                
+                if proxmox_info:
+                    proxmox_info['proxmox_detected'] = True
+                    console.print("[green]✅ Proxmox VE gefunden und analysiert[/green]")
+                else:
+                    console.print("[yellow]⚠️  pvesh verfügbar, aber keine Proxmox-Daten erreichbar[/yellow]")
+                    
+            except Exception as e:
+                console.print(f"[yellow]⚠️  Fehler bei Proxmox-Analyse: {str(e)[:100]}[/yellow]")
         
         return proxmox_info
 
@@ -1263,123 +1315,145 @@ class SSHLogCollector:
         if not proxmox_check:
             return {"error": "Proxmox nicht verfügbar"}
         
-        console.print(f"[dim]🔄 Aktualisiere Proxmox-Daten: {target}...[/dim]")
+        # Berechne Gesamtschritte basierend auf Target
+        total_steps = 0
+        if target in ["all", "vms", "containers"]:
+            total_steps += 10  # Nodes + VMs + Container
+        if target in ["all", "storage"]:
+            total_steps += 2
+        if target in ["all", "cluster"]:
+            total_steps += 3
+        if target in ["all", "ha"]:
+            total_steps += 2
+        if target in ["all", "tasks"]:
+            total_steps += 4
+        if target in ["all", "backups"]:
+            total_steps += 4
         
-        try:
-            if target in ["all", "vms", "containers"]:
-                # Hole alle Nodes
-                nodes_json = self.execute_remote_command('pvesh get /nodes --output-format=json')
-                if nodes_json:
-                    import json
-                    try:
-                        nodes_data = json.loads(nodes_json)
-                        for node in nodes_data[:3]:  # Erste 3 Nodes
-                            node_name = node.get('node', '')
-                            if node_name:
-                                console.print(f"[dim]📊 Aktualisiere {node_name}...[/dim]")
-                                
-                                # VMs
-                                if target in ["all", "vms"]:
-                                    vms_data = self.execute_remote_command(f'pvesh get /nodes/{node_name}/qemu --output-format=json')
-                                    if vms_data:
-                                        proxmox_info[f'{node_name}_vms'] = vms_data
-                                
-                                # Container
-                                if target in ["all", "containers"]:
-                                    containers_data = self.execute_remote_command(f'pvesh get /nodes/{node_name}/lxc --output-format=json')
-                                    if containers_data:
-                                        proxmox_info[f'{node_name}_containers'] = containers_data
-                                        
-                                        # Detaillierte Container-Informationen
-                                        try:
-                                            containers_list = json.loads(containers_data)
-                                            detailed_containers = {}
-                                            for container in containers_list:
-                                                container_id = container.get('vmid', '')
-                                                if container_id:
-                                                    # Container-Details
-                                                    container_details = self.execute_remote_command(f'pvesh get /nodes/{node_name}/lxc/{container_id}/status/current --output-format=json')
-                                                    if container_details:
-                                                        detailed_containers[f'container_{container_id}'] = container_details
-                                                    
-                                                    # Container-Konfiguration
-                                                    container_config = self.execute_remote_command(f'pvesh get /nodes/{node_name}/lxc/{container_id}/config --output-format=json')
-                                                    if container_config:
-                                                        detailed_containers[f'config_{container_id}'] = container_config
-                                                    
-                                                    # Container-Ressourcen
-                                                    container_rrd = self.execute_remote_command(f'pvesh get /nodes/{node_name}/lxc/{container_id}/rrddata --output-format=json')
-                                                    if container_rrd:
-                                                        detailed_containers[f'rrd_{container_id}'] = container_rrd
+        # Verwende Fortschrittsanzeige
+        with ProgressTracker(f"🔄 Aktualisiere Proxmox-Daten: {target}", total_steps=total_steps) as progress:
+            try:
+                if target in ["all", "vms", "containers"]:
+                    # Hole alle Nodes
+                    progress.update(1, "📋 Lade Node-Liste...")
+                    nodes_json = self.execute_remote_command('pvesh get /nodes --output-format=json')
+                    if nodes_json:
+                        import json
+                        try:
+                            nodes_data = json.loads(nodes_json)
+                            for node in nodes_data[:3]:  # Erste 3 Nodes
+                                node_name = node.get('node', '')
+                                if node_name:
+                                    progress.update(1, f"📊 Analysiere {node_name}...")
+                                    
+                                    # VMs
+                                    if target in ["all", "vms"]:
+                                        vms_data = self.execute_remote_command(f'pvesh get /nodes/{node_name}/qemu --output-format=json')
+                                        if vms_data:
+                                            proxmox_info[f'{node_name}_vms'] = vms_data
+                                    
+                                    # Container
+                                    if target in ["all", "containers"]:
+                                        containers_data = self.execute_remote_command(f'pvesh get /nodes/{node_name}/lxc --output-format=json')
+                                        if containers_data:
+                                            proxmox_info[f'{node_name}_containers'] = containers_data
                                             
-                                            if detailed_containers:
-                                                proxmox_info[f'{node_name}_detailed_containers'] = detailed_containers
-                                        except json.JSONDecodeError:
-                                            pass
-                                
-                                # Node-Status
-                                if target == "all":
-                                    status_data = self.execute_remote_command(f'pvesh get /nodes/{node_name}/status --output-format=json')
-                                    if status_data:
-                                        proxmox_info[f'{node_name}_status'] = status_data
-                    except json.JSONDecodeError:
-                        console.print("[yellow]⚠️  Fehler beim Parsen der Node-Daten[/yellow]")
-            
-            if target in ["all", "storage"]:
-                storage_data = self.execute_remote_command('pvesh get /storage --output-format=json')
-                if storage_data:
-                    proxmox_info['storage'] = storage_data
-            
-            if target in ["all", "cluster"]:
-                cluster_data = self.execute_remote_command('pvesh get /cluster/status --output-format=json')
-                if cluster_data:
-                    proxmox_info['cluster_status'] = cluster_data
+                                            # Detaillierte Container-Informationen
+                                            try:
+                                                containers_list = json.loads(containers_data)
+                                                detailed_containers = {}
+                                                for container in containers_list:
+                                                    container_id = container.get('vmid', '')
+                                                    if container_id:
+                                                        # Container-Details
+                                                        container_details = self.execute_remote_command(f'pvesh get /nodes/{node_name}/lxc/{container_id}/status/current --output-format=json')
+                                                        if container_details:
+                                                            detailed_containers[f'container_{container_id}'] = container_details
+                                                        
+                                                        # Container-Konfiguration
+                                                        container_config = self.execute_remote_command(f'pvesh get /nodes/{node_name}/lxc/{container_id}/config --output-format=json')
+                                                        if container_config:
+                                                            detailed_containers[f'config_{container_id}'] = container_config
+                                                        
+                                                        # Container-Ressourcen
+                                                        container_rrd = self.execute_remote_command(f'pvesh get /nodes/{node_name}/lxc/{container_id}/rrddata --output-format=json')
+                                                        if container_rrd:
+                                                            detailed_containers[f'rrd_{container_id}'] = container_rrd
+                                                
+                                                if detailed_containers:
+                                                    proxmox_info[f'{node_name}_detailed_containers'] = detailed_containers
+                                            except json.JSONDecodeError:
+                                                pass
+                                    
+                                    # Node-Status
+                                    if target == "all":
+                                        status_data = self.execute_remote_command(f'pvesh get /nodes/{node_name}/status --output-format=json')
+                                        if status_data:
+                                            proxmox_info[f'{node_name}_status'] = status_data
+                        except json.JSONDecodeError:
+                            console.print("[yellow]⚠️  Fehler beim Parsen der Node-Daten[/yellow]")
                 
-                cluster_config = self.execute_remote_command('pvesh get /cluster/config --output-format=json')
-                if cluster_config:
-                    proxmox_info['cluster_config'] = cluster_config
-            
-            if target in ["all", "ha"]:
-                ha_data = self.execute_remote_command('pvesh get /cluster/ha/status --output-format=json')
-                if ha_data:
-                    proxmox_info['ha_status'] = ha_data
-            
-            if target in ["all", "tasks"]:
-                # Aktuelle Tasks
-                nodes_json = self.execute_remote_command('pvesh get /nodes --output-format=json')
-                if nodes_json:
-                    try:
-                        nodes_data = json.loads(nodes_json)
-                        for node in nodes_data[:2]:  # Erste 2 Nodes
-                            node_name = node.get('node', '')
-                            if node_name:
-                                tasks_data = self.execute_remote_command(f'pvesh get /nodes/{node_name}/tasks --output-format=json --limit 10')
-                                if tasks_data:
-                                    proxmox_info[f'{node_name}_tasks'] = tasks_data
-                    except json.JSONDecodeError:
-                        pass
-            
-            if target in ["all", "backups"]:
-                # Backup-Status
-                nodes_json = self.execute_remote_command('pvesh get /nodes --output-format=json')
-                if nodes_json:
-                    try:
-                        nodes_data = json.loads(nodes_json)
-                        for node in nodes_data[:2]:  # Erste 2 Nodes
-                            node_name = node.get('node', '')
-                            if node_name:
-                                # Backup-Jobs
-                                backup_jobs = self.execute_remote_command(f'pvesh get /nodes/{node_name}/vzdump --output-format=json')
-                                if backup_jobs:
-                                    proxmox_info[f'{node_name}_backup_jobs'] = backup_jobs
-                    except json.JSONDecodeError:
-                        pass
-            
-            console.print(f"[green]✅ Proxmox-Daten aktualisiert: {target}[/green]")
-            
-        except Exception as e:
-            console.print(f"[red]❌ Fehler beim Aktualisieren der Proxmox-Daten: {str(e)[:100]}[/red]")
-            proxmox_info["error"] = str(e)
+                if target in ["all", "storage"]:
+                    progress.update(1, "💾 Prüfe Storage-Status...")
+                    storage_data = self.execute_remote_command('pvesh get /storage --output-format=json')
+                    if storage_data:
+                        proxmox_info['storage'] = storage_data
+                
+                if target in ["all", "cluster"]:
+                    progress.update(1, "🔗 Prüfe Cluster-Status...")
+                    cluster_data = self.execute_remote_command('pvesh get /cluster/status --output-format=json')
+                    if cluster_data:
+                        proxmox_info['cluster_status'] = cluster_data
+                    
+                    progress.update(1, "⚙️  Prüfe Cluster-Konfiguration...")
+                    cluster_config = self.execute_remote_command('pvesh get /cluster/config --output-format=json')
+                    if cluster_config:
+                        proxmox_info['cluster_config'] = cluster_config
+                
+                if target in ["all", "ha"]:
+                    progress.update(1, "🔄 Prüfe HA-Status...")
+                    ha_data = self.execute_remote_command('pvesh get /cluster/ha/status')
+                    if ha_data:
+                        proxmox_info['ha_status'] = ha_data
+                
+                if target in ["all", "tasks"]:
+                    # Aktuelle Tasks
+                    progress.update(1, "📋 Prüfe aktuelle Tasks...")
+                    nodes_json = self.execute_remote_command('pvesh get /nodes --output-format=json')
+                    if nodes_json:
+                        try:
+                            nodes_data = json.loads(nodes_json)
+                            for node in nodes_data[:2]:  # Erste 2 Nodes
+                                node_name = node.get('node', '')
+                                if node_name:
+                                    tasks_data = self.execute_remote_command(f'pvesh get /nodes/{node_name}/tasks --output-format=json --limit 10')
+                                    if tasks_data:
+                                        proxmox_info[f'{node_name}_tasks'] = tasks_data
+                        except json.JSONDecodeError:
+                            pass
+                
+                if target in ["all", "backups"]:
+                    # Backup-Status
+                    progress.update(1, "💾 Prüfe Backup-Status...")
+                    nodes_json = self.execute_remote_command('pvesh get /nodes --output-format=json')
+                    if nodes_json:
+                        try:
+                            nodes_data = json.loads(nodes_json)
+                            for node in nodes_data[:2]:  # Erste 2 Nodes
+                                node_name = node.get('node', '')
+                                if node_name:
+                                    # Backup-Jobs
+                                    backup_jobs = self.execute_remote_command(f'pvesh get /nodes/{node_name}/vzdump --output-format=json')
+                                    if backup_jobs:
+                                        proxmox_info[f'{node_name}_backup_jobs'] = backup_jobs
+                        except json.JSONDecodeError:
+                            pass
+                
+                console.print(f"[green]✅ Proxmox-Daten aktualisiert: {target}[/green]")
+                
+            except Exception as e:
+                console.print(f"[red]❌ Fehler beim Aktualisieren der Proxmox-Daten: {str(e)[:100]}[/red]")
+                proxmox_info["error"] = str(e)
         
         return proxmox_info
     
@@ -1398,105 +1472,110 @@ class SSHLogCollector:
         if not proxmox_check:
             return {"error": "Proxmox nicht verfügbar"}
         
-        try:
-            # Hole alle Nodes
-            nodes_json = self.execute_remote_command('pvesh get /nodes --output-format=json')
-            if not nodes_json:
-                return {"error": "Keine Nodes gefunden"}
-            
-            import json
-            nodes_data = json.loads(nodes_json)
-            
-            for node in nodes_data:
-                node_name = node.get('node', '')
-                if not node_name:
-                    continue
+        # Verwende Fortschrittsanzeige
+        with ProgressTracker("📊 Analysiere Proxmox-Container", total_steps=20) as progress:
+            try:
+                # Hole alle Nodes
+                progress.update(1, "📋 Lade Node-Liste...")
+                nodes_json = self.execute_remote_command('pvesh get /nodes --output-format=json')
+                if not nodes_json:
+                    return {"error": "Keine Nodes gefunden"}
                 
-                # Hole Container für diesen Node
-                containers_json = self.execute_remote_command(f'pvesh get /nodes/{node_name}/lxc --output-format=json')
-                if not containers_json:
-                    continue
+                import json
+                nodes_data = json.loads(nodes_json)
                 
-                try:
-                    containers_data = json.loads(containers_json)
-                    if not containers_data:
+                for i, node in enumerate(nodes_data):
+                    node_name = node.get('node', '')
+                    if not node_name:
                         continue
                     
-                    node_containers = {
-                        'node': node_name,
-                        'running': 0,
-                        'stopped': 0,
-                        'containers': []
-                    }
+                    progress.update(1, f"📊 Analysiere Node {i+1}/{len(nodes_data)}: {node_name}...")
                     
-                    for container in containers_data:
-                        container_id = container.get('vmid', '')
-                        container_name = container.get('name', f'Container-{container_id}')
-                        container_status = container.get('status', 'unknown')
-                        container_template = container.get('template', False)
-                        
-                        # Überspringe Templates
-                        if container_template:
+                    # Hole Container für diesen Node
+                    containers_json = self.execute_remote_command(f'pvesh get /nodes/{node_name}/lxc --output-format=json')
+                    if not containers_json:
+                        continue
+                    
+                    try:
+                        containers_data = json.loads(containers_json)
+                        if not containers_data:
                             continue
                         
-                        container_details = {
-                            'id': container_id,
-                            'name': container_name,
-                            'status': container_status,
-                            'node': node_name
+                        node_containers = {
+                            'node': node_name,
+                            'running': 0,
+                            'stopped': 0,
+                            'containers': []
                         }
                         
-                        # Hole zusätzliche Details
-                        try:
-                            # CPU und Memory
-                            status_details = self.execute_remote_command(f'pvesh get /nodes/{node_name}/lxc/{container_id}/status/current --output-format=json')
-                            if status_details:
-                                status_data = json.loads(status_details)
-                                container_details['cpu'] = status_data.get('cpu', 0)
-                                container_details['memory'] = status_data.get('memory', {})
-                                container_details['uptime'] = status_data.get('uptime', 0)
-                                container_details['disk'] = status_data.get('disk', {})
+                        for container in containers_data:
+                            container_id = container.get('vmid', '')
+                            container_name = container.get('name', f'Container-{container_id}')
+                            container_status = container.get('status', 'unknown')
+                            container_template = container.get('template', False)
                             
-                            # Netzwerk-Informationen
-                            network_info = self.execute_remote_command(f'pvesh get /nodes/{node_name}/lxc/{container_id}/status/current --output-format=json | jq -r ".netin, .netout" 2>/dev/null')
-                            if network_info:
-                                container_details['network'] = network_info
+                            # Überspringe Templates
+                            if container_template:
+                                continue
                             
-                        except (json.JSONDecodeError, Exception):
-                            pass
+                            container_details = {
+                                'id': container_id,
+                                'name': container_name,
+                                'status': container_status,
+                                'node': node_name
+                            }
+                            
+                            # Hole zusätzliche Details
+                            try:
+                                # CPU und Memory
+                                status_details = self.execute_remote_command(f'pvesh get /nodes/{node_name}/lxc/{container_id}/status/current --output-format=json')
+                                if status_details:
+                                    status_data = json.loads(status_details)
+                                    container_details['cpu'] = status_data.get('cpu', 0)
+                                    container_details['memory'] = status_data.get('memory', {})
+                                    container_details['uptime'] = status_data.get('uptime', 0)
+                                    container_details['disk'] = status_data.get('disk', {})
+                                
+                                # Netzwerk-Informationen
+                                network_info = self.execute_remote_command(f'pvesh get /nodes/{node_name}/lxc/{container_id}/status/current --output-format=json | jq -r ".netin, .netout" 2>/dev/null')
+                                if network_info:
+                                    container_details['network'] = network_info
+                                
+                            except (json.JSONDecodeError, Exception):
+                                pass
+                            
+                            # Kategorisiere Container
+                            if container_status == 'running':
+                                container_info['running_containers'].append(container_details)
+                                node_containers['running'] += 1
+                            else:
+                                container_info['stopped_containers'].append(container_details)
+                                node_containers['stopped'] += 1
+                            
+                            node_containers['containers'].append(container_details)
+                            container_info['total_containers'] += 1
                         
-                        # Kategorisiere Container
-                        if container_status == 'running':
-                            container_info['running_containers'].append(container_details)
-                            node_containers['running'] += 1
-                        else:
-                            container_info['stopped_containers'].append(container_details)
-                            node_containers['stopped'] += 1
-                        
-                        node_containers['containers'].append(container_details)
-                        container_info['total_containers'] += 1
+                        if node_containers['containers']:
+                            container_info['nodes_with_containers'].append(node_containers)
+                            container_info['container_summary'][node_name] = {
+                                'total': len(node_containers['containers']),
+                                'running': node_containers['running'],
+                                'stopped': node_containers['stopped']
+                            }
                     
-                    if node_containers['containers']:
-                        container_info['nodes_with_containers'].append(node_containers)
-                        container_info['container_summary'][node_name] = {
-                            'total': len(node_containers['containers']),
-                            'running': node_containers['running'],
-                            'stopped': node_containers['stopped']
-                        }
+                    except json.JSONDecodeError:
+                        continue
                 
-                except json.JSONDecodeError:
-                    continue
-            
-            # Erstelle Zusammenfassung
-            container_info['summary'] = {
-                'total_containers': container_info['total_containers'],
-                'running_containers': len(container_info['running_containers']),
-                'stopped_containers': len(container_info['stopped_containers']),
-                'nodes_with_containers': len(container_info['nodes_with_containers'])
-            }
-            
-        except Exception as e:
-            container_info["error"] = str(e)
+                # Erstelle Zusammenfassung
+                container_info['summary'] = {
+                    'total_containers': container_info['total_containers'],
+                    'running_containers': len(container_info['running_containers']),
+                    'stopped_containers': len(container_info['stopped_containers']),
+                    'nodes_with_containers': len(container_info['nodes_with_containers'])
+                }
+                
+            except Exception as e:
+                container_info["error"] = str(e)
         
         return container_info
     
