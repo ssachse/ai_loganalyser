@@ -3864,10 +3864,118 @@ def save_system_report(report_content: str, system_info: Dict[str, Any]) -> str:
 
 """
     
+    # Füge Netzwerk-Sicherheitsanalyse hinzu, falls vorhanden
+    network_section = ""
+    if 'network_security' in system_info:
+        network_data = system_info['network_security']
+        network_section = "\n## 🔒 Netzwerk-Sicherheitsanalyse\n\n"
+        
+        # Interne Services
+        if 'internal_services' in network_data:
+            internal_services = network_data['internal_services']
+            
+            if 'service_mapping' in internal_services and internal_services['service_mapping']:
+                network_section += "### Lauschende Services\n\n"
+                network_section += "| Port | Service | Status | Details |\n"
+                network_section += "|------|---------|--------|---------|\n"
+                
+                for port, info in internal_services['service_mapping'].items():
+                    service_name = info.get('service', 'Unbekannt')
+                    status = info.get('status', 'Unbekannt')
+                    details = info.get('details', '')
+                    address = info.get('address', 'N/A')
+                    external = "extern" if info.get('external', False) else "intern"
+                    
+                    network_section += f"| {port} | {service_name} | {status} | {address} ({external}) |\n"
+                
+                network_section += "\n"
+            
+            if 'all_ip_addresses' in internal_services and internal_services['all_ip_addresses']:
+                network_section += "### IP-Adressen\n\n"
+                for ip_info in internal_services['all_ip_addresses']:
+                    if isinstance(ip_info, dict):
+                        network_section += f"- **{ip_info.get('ip', 'Unbekannt')}** auf Interface {ip_info.get('interface', 'Unbekannt')} ({ip_info.get('type', 'Unbekannt')})\n"
+                    else:
+                        network_section += f"- **{ip_info}**\n"
+                network_section += "\n"
+        
+        # Externe Tests
+        if 'external_tests' in network_data:
+            external_tests = network_data['external_tests']
+            
+            if 'reachable_ports' in external_tests and external_tests['reachable_ports']:
+                network_section += "### Extern erreichbare Ports\n\n"
+                network_section += f"**{len(external_tests['reachable_ports'])} Ports sind von außen erreichbar:**\n\n"
+                for port in external_tests['reachable_ports']:
+                    network_section += f"- Port {port}\n"
+                network_section += "\n"
+            
+            # Detaillierte Host-Informationen
+            if 'reachable_hosts' in external_tests and external_tests['reachable_hosts']:
+                network_section += "### Erreichbare Hosts und Ports\n\n"
+                for host, ports in external_tests['reachable_hosts'].items():
+                    if ports:
+                        network_section += f"**{host}:** {', '.join(map(str, ports))}\n"
+                network_section += "\n"
+            
+            if 'service_versions' in external_tests and external_tests['service_versions']:
+                network_section += "### Service-Versionen\n\n"
+                for port, version in external_tests['service_versions'].items():
+                    network_section += f"- **Port {port}:** {version}\n"
+                network_section += "\n"
+            
+            if 'vulnerability_indicators' in external_tests and external_tests['vulnerability_indicators']:
+                network_section += "### Sicherheitsprobleme\n\n"
+                for indicator in external_tests['vulnerability_indicators']:
+                    network_section += f"- ⚠️ {indicator}\n"
+                network_section += "\n"
+        
+        # Sicherheitsbewertung
+        if 'security_assessment' in network_data:
+            assessment = network_data['security_assessment']
+            
+            network_section += "### Sicherheitsbewertung\n\n"
+            
+            if 'risk_level' in assessment:
+                risk_level = assessment['risk_level'].upper()
+                risk_emoji = "🔴" if risk_level in ["HIGH", "KRITISCH"] else "🟡" if risk_level in ["MEDIUM", "MITTEL"] else "🟢"
+                network_section += f"{risk_emoji} **Risiko-Level:** {risk_level}\n\n"
+            
+            if 'security_score' in assessment:
+                score = assessment['security_score']
+                network_section += f"**Sicherheits-Score:** {score}/100\n\n"
+            
+            if 'exposed_services' in assessment and assessment['exposed_services']:
+                network_section += "### Exponierte Services\n\n"
+                for service in assessment['exposed_services']:
+                    network_section += f"- ⚠️ {service}\n"
+                network_section += "\n"
+            
+            if 'host_exposure' in assessment and assessment['host_exposure']:
+                network_section += "### Host-spezifische Exposition\n\n"
+                for host, ports in assessment['host_exposure'].items():
+                    if ports:
+                        network_section += f"**{host}:** {', '.join(map(str, ports))}\n"
+                network_section += "\n"
+            
+            if 'recommendations' in assessment and assessment['recommendations']:
+                network_section += "### Sicherheitsempfehlungen\n\n"
+                for rec in assessment['recommendations']:
+                    network_section += f"- 💡 {rec}\n"
+                network_section += "\n"
+            
+            if 'compliance_issues' in assessment and assessment['compliance_issues']:
+                network_section += "### Compliance-Probleme\n\n"
+                for issue in assessment['compliance_issues']:
+                    network_section += f"- ❌ {issue}\n"
+                network_section += "\n"
+    
     # Speichere Bericht
     try:
         with open(filename, 'w', encoding='utf-8') as f:
             f.write(report_header)
+            if network_section:
+                f.write(network_section)
             f.write(report_content)
         return filename
     except Exception as e:
