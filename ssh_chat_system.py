@@ -1229,7 +1229,7 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
     def run_initial_analysis():
         initial_analysis_prompt = create_chat_prompt(
             system_context,
-            "Analysiere das System und gib eine kurze Zusammenfassung der wichtigsten Punkte, Probleme und Empfehlungen.",
+            "Analysiere das System und gib eine kurze Zusammenfassung der wichtigsten Punkte, Probleme und Empfehlungen. Antworte auf Deutsch.",
             []
         )
         # Nutze das schnellste verfügbare Modell für die Initialanalyse
@@ -1268,16 +1268,10 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
 
                 console.print(f"[dim]Verwende: {user_input}[/dim]")
                 
-                # Zeige Modell-Wechsel für Shortcuts
-                if shortcut_info['complex']:
-                    console.print(f"[dim]🔄 Wechsle zu komplexem Modell für detaillierte Analyse...[/dim]")
-                else:
-                    console.print(f"[dim]🔄 Wechsle zu Standard-Modell für Analyse...[/dim]")
-                
                 # Prüfe Cache für Kürzelwörter
                 if cache_key and cache_key in response_cache:
-                    console.print(f"[dim]📋 {_('chat_using_cached')} '{user_input}'[/dim]")
-                    console.print(f"\n[bold green]🤖 {_('chat_ollama')}:[/bold green]")
+                    console.print(f"[dim]📋 {get_text('chat_using_cached')} '{user_input}'[/dim]")
+                    console.print(f"\n[bold green]🤖 {get_text('chat_ollama')}:[/bold green]")
                     console.print(response_cache[cache_key])
 
                     # Füge zur Chat-Historie hinzu
@@ -1287,7 +1281,7 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
 
             # Hilfe anzeigen
             if user_input.lower() in ['help', 'm']:
-                console.print(f"\n[bold cyan]{_('menu_available_shortcuts')}[/bold cyan]")
+                console.print(f"\n[bold cyan]Verfügbare Kürzelwörter:[/bold cyan]")
                 for shortcut, info in shortcuts.items():
                     if shortcut not in ['help', 'm']:
                         console.print(f"  • '{shortcut}' - {info['question']}")
@@ -1307,6 +1301,7 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
                     console.print(f"[dim]🔄 Wechsle zu komplexem Modell für detaillierte Analyse...[/dim]")
                 else:
                     model = select_best_model(complex_analysis=False, for_menu=False)
+                    # Nur eine Nachricht für Modell-Wechsel
                     console.print(f"[dim]🔄 Wechsle zu Standard-Modell für Analyse...[/dim]")
             else:
                 # Bestimme Modell-Komplexität für freie Fragen
@@ -1583,7 +1578,10 @@ def create_chat_prompt(system_context: str, user_question: str, chat_history: Li
     
     prompt_parts = []
     
-    # System-Rolle für präzise System-Analyse (basierend auf aktueller Sprache)
+    # Erzwinge deutsche Sprache für bessere Konsistenz
+    i18n.set_language('de')
+    
+    # System-Rolle für präzise System-Analyse (immer auf Deutsch)
     if i18n.get_language() == 'de':
         prompt_parts.append("Du bist ein erfahrener System-Administrator und IT-Sicherheitsexperte.")
         prompt_parts.append("Deine Aufgabe ist es, Linux-Systeme zu analysieren und potenzielle Probleme zu identifizieren.")
