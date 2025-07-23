@@ -905,8 +905,7 @@ def main():
             console.print(f"📦 Archiv erstellt: {archive_path}")
         
         # Interaktiver Ollama-Chat
-        if Confirm.ask("\n[bold blue]Möchten Sie sich mit Ollama über das System unterhalten?"):
-            start_interactive_chat(system_info, analyzer.log_entries, analyzer.anomalies)
+        start_interactive_chat(system_info, analyzer.log_entries, analyzer.anomalies)
         
         return 0
         

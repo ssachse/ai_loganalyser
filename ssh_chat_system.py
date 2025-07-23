@@ -25,7 +25,7 @@ import time
 # Importiere den bestehenden Log-Analyzer
 from log_analyzer import LogAnalyzer, LogEntry, LogLevel, Anomaly
 from config import Config
-from i18n import _, i18n
+from i18n import i18n
 
 # Initialisiere dynamische Übersetzungen für unbekannte Locales
 i18n.initialize_dynamic_translation()
@@ -1009,6 +1009,9 @@ class SSHLogCollector:
 
 
 def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEntry], anomalies: List[Anomaly], args=None):
+    # Debug-Modus aktivieren
+    if args and hasattr(args, 'debug') and args.debug:
+        console.debug_mode = True
     """Startet interaktiven Chat mit Ollama"""
     
     # Übersetzungen werden direkt im Chat verwendet - keine Abhängigkeit von i18n
@@ -1017,6 +1020,10 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
     chat_history = []
     response_cache = {}
     initial_analysis_result = {'done': False, 'result': None}
+    
+    # Cache und Historie bereinigen (entferne alte, möglicherweise falsche Antworten)
+    response_cache.clear()
+    chat_history.clear()
 
     # Kürzelwörter für häufige Fragen mit Modell-Komplexität
     shortcuts = {
@@ -1101,7 +1108,7 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
             'cache_key': 'proxmox_vms'
         },
         'proxmox-containers': {
-            'question': _('shortcut_proxmox_containers'),
+            'question': 'Welche Container laufen auf Proxmox?',
             'complex': False,
             'cache_key': 'proxmox_containers'
         },
@@ -1115,67 +1122,16 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
             'complex': True,
             'cache_key': 'system_report'
         },
-        'help': {
-            'question': _('shortcut_help'),
-            'complex': False,
-            'cache_key': None
-        },
-        'm': {
-            'question': _('shortcut_help'),
-            'complex': False,
-            'cache_key': None
-        }
-    }
-    
-    # Direkte deutsche Übersetzungen als Fallback
-    translations = {
-        'chat_title': 'Interaktiver Chat mit Ollama',
-        'chat_prompt': 'Sie können jetzt weitere Fragen über das analysierte System stellen.',
-        'chat_shortcuts': 'Kürzelwörter für häufige Fragen:',
-        'chat_exit_commands': 'zum Verlassen',
-        'chat_tip': 'Tipp:',
-        'chat_you': 'Sie:',
-        'chat_ollama': 'Ollama:',
-        'chat_thinking': 'Denke nach...',
-        'chat_no_response': 'Keine Antwort von Ollama erhalten',
-        'chat_goodbye': 'Auf Wiedersehen! Danke für die Nutzung des Log-Analyzers.',
-        'chat_using_cached': 'Verwende gecachte Antwort für',
-        'chat_cached': 'gecacht',
-        'chat_using_model': 'Verwende Modell:',
-        'chat_using_fast_model': 'Verwende schnelles Modell:',
-        'chat_using_complex_model': 'Verwende komplexes Modell:',
-        'shortcut_services': 'Welche Services laufen auf dem System?',
-        'shortcut_storage': 'Wie ist der Speicherplatz?',
-        'shortcut_security': 'Gibt es Sicherheitsprobleme?',
-        'shortcut_processes': 'Was sind die Top-Prozesse?',
-        'shortcut_performance': 'Wie ist die System-Performance?',
-        'shortcut_users': 'Welche Benutzer sind aktiv?',
-        'shortcut_updates': 'Gibt es verfügbare System-Updates?',
-        'shortcut_logs': 'Was zeigen die Logs?',
-        'shortcut_k8s': 'Wie ist der Kubernetes-Cluster-Status?',
-        'shortcut_k8s_problems': 'Welche Kubernetes-Probleme gibt es?',
-        'shortcut_k8s_pods': 'Welche Pods laufen im Cluster?',
-        'shortcut_k8s_nodes': 'Wie ist der Node-Status?',
-        'shortcut_k8s_resources': 'Wie ist die Ressourcen-Auslastung im Cluster?',
-        'shortcut_help': 'Zeige verfügbare Kürzelwörter',
-        'shortcut_proxmox': 'Wie ist der Proxmox VE-Status?',
-        'shortcut_proxmox_problems': 'Welche Proxmox-Probleme gibt es?',
-        'shortcut_proxmox_vms': 'Welche VMs laufen auf Proxmox?',
-        'shortcut_proxmox_containers': 'Welche Container laufen auf Proxmox?',
-        'shortcut_proxmox_storage': 'Wie ist der Proxmox-Speicherplatz?',
-        'shortcut_report': 'Erstelle einen detaillierten Systembericht mit Handlungsanweisungen',
-        'analysis_running': 'Führe automatische System-Analyse durch...',
-        'analysis_summary': 'System-Analyse:',
-        'report_generating': 'Generiere detaillierten Systembericht...',
-        'report_saving': 'Speichere Bericht als Markdown...',
-        'report_success': 'Bericht erfolgreich erstellt:',
-        'report_error': 'Fehler beim Erstellen des Berichts:'
+        # 'help' und 'm' werden direkt behandelt, nicht als Shortcuts
     }
     
     # Verwende Übersetzungen oder Fallback
     def get_text(key):
-        # Verwende direkt das Fallback-Dictionary
-        return translations.get(key, key)
+        # Verwende die i18n-Übersetzungsfunktion
+        from i18n import _, i18n
+        # Erzwinge deutsche Sprache
+        i18n.set_language('de')
+        return _(key)
     
     console.print(f"\n[bold blue]💬 {get_text('chat_title')}[/bold blue]")
     console.print("="*60)
@@ -1238,13 +1194,15 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
     console.print(f"\n[dim]🤖 {get_text('analysis_running')} ({get_text('chat_tip')} {get_text('chat_you')} ...)[/dim]")
 
     def run_initial_analysis():
-        initial_analysis_prompt = create_chat_prompt(
-            system_context,
-            "Analysiere das System und gib eine kurze Zusammenfassung der wichtigsten Punkte, Probleme und Empfehlungen. Antworte auf Deutsch.",
-            []
-        )
+        # Vereinfachter Prompt für Initialanalyse
+        simple_prompt = f"""Du bist ein System-Administrator. Analysiere diese System-Daten und gib eine kurze Zusammenfassung in 2-3 Sätzen auf Deutsch:
+
+{system_context}
+
+Antworte nur mit der Zusammenfassung, keine weiteren Erklärungen."""
+        
         # Nutze das schnellste verfügbare Modell für die Initialanalyse
-        result = query_ollama(initial_analysis_prompt, model=select_best_model(complex_analysis=False, for_menu=False), complex_analysis=False)
+        result = query_ollama(simple_prompt, model=select_best_model(complex_analysis=False, for_menu=False), complex_analysis=False)
         initial_analysis_result['result'] = result
         initial_analysis_result['done'] = True
 
@@ -1268,20 +1226,49 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
                 console.print(f"\n[green]👋 {get_text('chat_goodbye')}[/green]")
                 break
 
-            # Prüfe auf Kürzelwörter
+            # Prüfe auf leere Eingabe
+            if not user_input:
+                console.print(f"[dim]💡 Tipp: Verwenden Sie 'menu' für verfügbare Kürzelwörter oder stellen Sie eine Frage.[/dim]")
+                continue
+
+            # Prüfe auf Kürzelwörter (robustere Erkennung)
             shortcut_used = False
-            original_input = user_input.lower()
-            if user_input.lower() in shortcuts:
-                shortcut_info = shortcuts[user_input.lower()]
+            original_input = user_input.lower().strip()
+            user_input_lower = user_input.lower().strip()
+            complex_analysis = False  # Initialisiere complex_analysis
+            cache_key = None  # Initialisiere cache_key
+            
+            # Erweiterte Kürzelwörter-Erkennung
+            if user_input_lower in shortcuts:
+                shortcut_info = shortcuts[user_input_lower]
                 user_input = shortcut_info['question']
                 complex_analysis = shortcut_info['complex']
                 cache_key = shortcut_info['cache_key']
                 shortcut_used = True
 
-                console.print(f"[dim]Verwende: {user_input}[/dim]")
+                console.print(f"[dim]Verwende Kürzelwort: {user_input}[/dim]")
+            else:
+                # Intelligente Abfrage-Interpolation mit Mini-Modell
+                interpolated_shortcut = interpolate_user_input_to_shortcut(user_input_lower, shortcuts)
+                if interpolated_shortcut:
+                    try:
+                        shortcut_info = shortcuts[interpolated_shortcut]
+                        user_input = shortcut_info['question']
+                        complex_analysis = shortcut_info['complex']
+                        cache_key = shortcut_info['cache_key']
+                        shortcut_used = True
+
+                        console.print(f"[dim]Verwende interpoliertes Kürzelwort: {user_input} (aus '{original_input}')[/dim]")
+                    except KeyError as e:
+                        console.print(f"[red]❌ Fehler: Shortcut '{interpolated_shortcut}' nicht gefunden[/red]")
+                        continue
+                    
+                    # Debug-Ausgabe für Modell-Auswahl
+                    if hasattr(console, 'debug_mode') and console.debug_mode:
+                        console.print(f"[dim]🔍 Shortcut: {interpolated_shortcut}, Complex: {complex_analysis}[/dim]")
                 
                 # Spezielle Behandlung für Systembericht
-                if original_input == 'report':
+                if original_input == 'report' or interpolated_shortcut == 'report':
                     console.print(f"[dim]🔄 {get_text('report_generating')}[/dim]")
                     
                     # Erstelle spezialisierten Prompt für Bericht
@@ -1325,28 +1312,25 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
                 
                 # Prüfe Cache für andere Kürzelwörter
                 if cache_key and cache_key in response_cache:
-                    console.print(f"[dim]📋 {get_text('chat_using_cached')} '{user_input}'[/dim]")
+                    console.print(f"[dim]📋 {get_text('chat_using_cached')} '{original_input}'[/dim]")
                     console.print(f"\n[bold green]🤖 {get_text('chat_ollama')}:[/bold green]")
                     console.print(response_cache[cache_key])
 
-                    # Füge zur Chat-Historie hinzu
-                    chat_history.append({"role": "user", "content": user_input})
-                    chat_history.append({"role": "assistant", "content": response_cache[cache_key]})
-                    continue
-
-            # Hilfe anzeigen
-            if user_input.lower() in ['help', 'm']:
-                console.print(f"\n[bold cyan]Verfügbare Kürzelwörter:[/bold cyan]")
-                for shortcut, info in shortcuts.items():
-                    if shortcut not in ['help', 'm']:
-                        console.print(f"  • '{shortcut}' - {info['question']}")
+                                    # Füge zur Chat-Historie hinzu
+                chat_history.append({"role": "user", "content": user_input})
+                chat_history.append({"role": "assistant", "content": response_cache[cache_key]})
                 continue
 
-            if not user_input:
+            # Intelligentes Menü anzeigen
+            if user_input.lower() in ['help', 'm', 'menu']:
+                intelligent_menu = create_intelligent_menu(shortcuts)
+                console.print(intelligent_menu)
                 continue
 
             # Erstelle Chat-Prompt
             prompt = create_chat_prompt(system_context, user_input, chat_history)
+            
+
 
             # Modell-Auswahl basierend auf Eingabe-Typ
             if shortcut_used:
@@ -1356,21 +1340,20 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
                     console.print(f"[dim]🔄 Wechsle zu komplexem Modell für detaillierte Analyse...[/dim]")
                 else:
                     model = select_best_model(complex_analysis=False, for_menu=False)
-                    # Nur eine Nachricht für Modell-Wechsel
                     console.print(f"[dim]🔄 Wechsle zu Standard-Modell für Analyse...[/dim]")
             else:
                 # Bestimme Modell-Komplexität für freie Fragen
                 complex_analysis = any(keyword in user_input.lower() for keyword in [
                     'problem', 'issue', 'error', 'failure', 'crash', 'anomaly', 'security',
                     'performance', 'bottleneck', 'optimization', 'recommendation', 'analysis',
-                    'investigate', 'debug', 'troubleshoot', 'diagnose'
+                    'investigate', 'debug', 'troubleshoot', 'diagnose', 'lxc', 'container', 'proxmox'
                 ])
                 model = select_best_model(complex_analysis)
 
-            # Zeige Modell-Info nur im Debug-Modus (ohne doppelte Ausgabe)
-            if args and hasattr(args, 'debug') and args.debug and not shortcut_used:
-                model_type = get_text('chat_using_model') if not complex_analysis else get_text('chat_using_complex_model')
-                console.print(f"[dim]🤖 {model_type}: {model}[/dim]")
+            # Zeige Modell-Info für Debugging
+            if args and hasattr(args, 'debug') and args.debug:
+                model_type = "Komplexes Modell" if complex_analysis else "Standard-Modell"
+                console.print(f"[dim]🤖 Verwende {model_type}: {model}[/dim]")
 
             # Sende an Ollama
             console.print(f"[dim]🤔 {get_text('chat_thinking')}[/dim]")
@@ -1383,7 +1366,7 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
                 # Cache die Antwort für Kürzelwörter
                 if shortcut_used and cache_key:
                     response_cache[cache_key] = response
-                    console.print(f"[dim]📋 {get_text('chat_cached')} '{user_input}'[/dim]")
+                    console.print(f"[dim]📋 {get_text('chat_cached')} '{original_input}'[/dim]")
 
                 # Füge zur Chat-Historie hinzu
                 chat_history.append({"role": "user", "content": user_input})
@@ -1395,8 +1378,8 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
             else:
                 console.print(f"[red]❌ {get_text('chat_no_response')}[/red]")
 
-            # Zeige das Initialanalyse-Ergebnis ggf. nachträglich
-            if initial_analysis_result['done'] and initial_analysis_result['result']:
+            # Zeige das Initialanalyse-Ergebnis nur einmal nach der ersten Antwort
+            if initial_analysis_result['done'] and initial_analysis_result['result'] and len(chat_history) == 2:
                 console.print(f"\n[bold green]🤖 {get_text('analysis_summary')}[/bold green]")
                 console.print(initial_analysis_result['result'])
                 initial_analysis_result['done'] = False
@@ -1406,6 +1389,8 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
             break
         except Exception as e:
             console.print(f"[red]❌ Fehler im Chat: {e}[/red]")
+            console.print(f"[dim]💡 Tipp: Verwenden Sie 'm' für verfügbare Kürzelwörter oder stellen Sie eine freie Frage.[/dim]")
+            continue
 
 
 def create_system_context(system_info: Dict[str, Any], log_entries: List[LogEntry], anomalies: List[Anomaly]) -> str:
@@ -1674,20 +1659,54 @@ def create_chat_prompt(system_context: str, user_question: str, chat_history: Li
     
     prompt_parts = []
     
-    # Erzwinge deutsche Sprache für bessere Konsistenz
-    i18n.set_language('de')
+    # Verwende aktuelle Sprache
+    current_lang = i18n.get_language()
     
-    # System-Rolle für präzise System-Analyse (immer auf Deutsch)
-    if i18n.get_language() == 'de':
+    # System-Rolle für präzise System-Analyse
+    if current_lang == 'de':
         prompt_parts.append("Du bist ein erfahrener System-Administrator und IT-Sicherheitsexperte.")
         prompt_parts.append("Deine Aufgabe ist es, Linux-Systeme zu analysieren und potenzielle Probleme zu identifizieren.")
         prompt_parts.append("WICHTIGE REGELN:")
         prompt_parts.append("- Antworte kurz, präzise und prägnant")
-        prompt_parts.append("- Identifiziere automatisch Engpässe, Sicherheitslücken und Unregelmäßigkeiten")
-        prompt_parts.append("- Warnung bei kritischen Problemen (hohe CPU/Last, wenig Speicher, Sicherheitsprobleme)")
-        prompt_parts.append("- Gib konkrete Handlungsempfehlungen")
         prompt_parts.append("- Verwende die bereitgestellten System-Daten als Grundlage")
         prompt_parts.append("- Antworte IMMER auf Deutsch")
+        prompt_parts.append("- Analysiere die System-Daten und gib konkrete Antworten")
+        prompt_parts.append("- Wenn keine relevanten Daten vorhanden sind, sage das ehrlich")
+        prompt_parts.append("- WICHTIG: Antworte NUR auf Deutsch, niemals auf Englisch")
+        prompt_parts.append("- Verwende deutsche Begriffe und Ausdrücke")
+        prompt_parts.append("- SPRACHE: Du MUSST auf Deutsch antworten, keine englischen Wörter verwenden")
+        prompt_parts.append("- BEISPIEL: 'Speicherplatz' statt 'storage', 'Benutzer' statt 'users'")
+        
+        # Spezifische Prompts je nach Fragetyp
+        question_lower = user_question.lower()
+        if any(keyword in question_lower for keyword in ['user', 'benutzer', 'users']):
+            prompt_parts.append("- Analysiere die Benutzer-Informationen aus den System-Daten")
+            prompt_parts.append("- Liste aktive Benutzer mit Details auf")
+            prompt_parts.append("- Identifiziere Benutzer-Probleme oder Anomalien")
+        elif any(keyword in question_lower for keyword in ['container', 'lxc', 'proxmox']):
+            prompt_parts.append("- Analysiere die Proxmox Container-Informationen")
+            prompt_parts.append("- Liste laufende Container mit Status auf")
+            prompt_parts.append("- Identifiziere Container-Probleme")
+        elif any(keyword in question_lower for keyword in ['vm', 'virtual machine', 'proxmox']):
+            prompt_parts.append("- Analysiere die Proxmox VM-Informationen")
+            prompt_parts.append("- Liste laufende VMs mit Status auf")
+            prompt_parts.append("- Identifiziere VM-Probleme")
+        elif any(keyword in question_lower for keyword in ['service', 'services']):
+            prompt_parts.append("- Analysiere die Service-Informationen")
+            prompt_parts.append("- Liste wichtige Services mit Status auf")
+            prompt_parts.append("- Identifiziere Service-Probleme")
+        elif any(keyword in question_lower for keyword in ['speicher', 'storage', 'disk']):
+            prompt_parts.append("- Analysiere die Speicherplatz-Informationen")
+            prompt_parts.append("- Identifiziere Speicherplatz-Probleme")
+            prompt_parts.append("- Gib Speicherplatz-Empfehlungen")
+        elif any(keyword in question_lower for keyword in ['sicherheit', 'security']):
+            prompt_parts.append("- Analysiere die Sicherheits-Informationen")
+            prompt_parts.append("- Identifiziere Sicherheitsprobleme")
+            prompt_parts.append("- Gib Sicherheits-Empfehlungen")
+        else:
+            prompt_parts.append("- Identifiziere automatisch Engpässe, Sicherheitslücken und Unregelmäßigkeiten")
+            prompt_parts.append("- Warnung bei kritischen Problemen (hohe CPU/Last, wenig Speicher, Sicherheitsprobleme)")
+            prompt_parts.append("- Gib konkrete Handlungsempfehlungen")
         
         # System-Kontext
         prompt_parts.append("\n=== SYSTEM-INFORMATIONEN ===")
@@ -1703,21 +1722,17 @@ def create_chat_prompt(system_context: str, user_question: str, chat_history: Li
                     prompt_parts.append(f"Du: {entry['content']}")
         
         prompt_parts.append(f"\nBenutzer-Frage: {user_question}")
-        prompt_parts.append("\nAntworte strukturiert auf Deutsch:")
-        prompt_parts.append("1. Kurze Analyse der Frage")
-        prompt_parts.append("2. Identifizierte Probleme/Engpässe (falls vorhanden)")
-        prompt_parts.append("3. Konkrete Empfehlungen")
+        prompt_parts.append("\nAntworte direkt und präzise auf die Frage basierend auf den System-Daten:")
     else:
         # Englische Prompts
         prompt_parts.append("You are an experienced system administrator and IT security expert.")
         prompt_parts.append("Your task is to analyze Linux systems and identify potential problems.")
         prompt_parts.append("IMPORTANT RULES:")
         prompt_parts.append("- Answer briefly, precisely and concisely")
-        prompt_parts.append("- Automatically identify bottlenecks, security gaps and irregularities")
-        prompt_parts.append("- Warning for critical problems (high CPU/load, low memory, security issues)")
-        prompt_parts.append("- Provide concrete recommendations for action")
         prompt_parts.append("- Use the provided system data as a basis")
         prompt_parts.append("- Answer ALWAYS in English")
+        prompt_parts.append("- Analyze the system data and give concrete answers")
+        prompt_parts.append("- If no relevant data is available, say so honestly")
         
         # System context
         prompt_parts.append("\n=== SYSTEM INFORMATION ===")
@@ -1733,10 +1748,7 @@ def create_chat_prompt(system_context: str, user_question: str, chat_history: Li
                     prompt_parts.append(f"You: {entry['content']}")
         
         prompt_parts.append(f"\nUser Question: {user_question}")
-        prompt_parts.append("\nAnswer structured in English:")
-        prompt_parts.append("1. Brief analysis of the question")
-        prompt_parts.append("2. Identified problems/bottlenecks (if any)")
-        prompt_parts.append("3. Concrete recommendations")
+        prompt_parts.append("\nAnswer directly and precisely to the question based on the system data:")
     
     return "\n".join(prompt_parts)
 
@@ -1826,6 +1838,11 @@ def select_best_model(complex_analysis: bool = False, for_menu: bool = False) ->
         console.print("[blue]💡 Empfohlene Installation: ollama pull llama3.2:3b[/blue]")
         return "llama2"  # Fallback auf Standard-Modell
     
+    # Debug-Output für Modell-Auswahl (nur wenn Debug-Modus aktiv)
+    if hasattr(console, 'debug_mode') and console.debug_mode:
+        console.print(f"[dim]🔍 Modell-Auswahl: complex_analysis={complex_analysis}, for_menu={for_menu}[/dim]")
+        console.print(f"[dim]📋 Verfügbare Modelle: {[m['name'] for m in models]}[/dim]")
+    
     # Für Menü/Shortcuts: Verwende qwen:0.5b wenn verfügbar
     if for_menu:
         for model in models:
@@ -1852,7 +1869,10 @@ def select_best_model(complex_analysis: bool = False, for_menu: bool = False) ->
                     return model['name']
         
         # Fallback: Verwende das erste verfügbare Modell
-        return models[0]['name']
+        selected_model = models[0]['name']
+        if hasattr(console, 'debug_mode') and console.debug_mode:
+            console.print(f"[dim]🎯 Komplexe Analyse: Verwende {selected_model}[/dim]")
+        return selected_model
     else:
         # Für einfache Analysen: Priorisiere schnellere Modelle
         fast_models = [
@@ -1863,11 +1883,149 @@ def select_best_model(complex_analysis: bool = False, for_menu: bool = False) ->
         for fast_model in fast_models:
             for model in models:
                 if model['name'] == fast_model:
+                    if hasattr(console, 'debug_mode') and console.debug_mode:
+                        console.print(f"[dim]🎯 Einfache Analyse: Verwende {model['name']}[/dim]")
                     return model['name']
         
         # Fallback: Verwende das erste verfügbare Modell
-        return models[0]['name']
+        selected_model = models[0]['name']
+        if hasattr(console, 'debug_mode') and console.debug_mode:
+            console.print(f"[dim]🎯 Fallback: Verwende {selected_model}[/dim]")
+        return selected_model
 
+
+# Cache für Interpolation
+_interpolation_cache = {}
+
+def create_intelligent_menu(shortcuts: Dict) -> str:
+    """
+    Erstellt ein intelligentes Menü mit Wortwolke-Anreicherung durch schnelles Modell.
+    """
+    # Verwende schnelles Modell für Wortwolke-Anreicherung
+    model = select_best_model(complex_analysis=False, for_menu=True)
+    
+    # Erstelle Basis-Menü
+    menu_parts = []
+    menu_parts.append(f"\n[bold cyan]Verfügbare Kürzelwörter:[/bold cyan]")
+    
+    # Gruppiere Shortcuts nach Kategorien
+    categories = {
+        'system': ['services', 'storage', 'security', 'processes', 'performance', 'users', 'updates', 'logs'],
+        'kubernetes': ['k8s', 'k8s-problems', 'k8s-pods', 'k8s-nodes', 'k8s-resources'],
+        'proxmox': ['proxmox', 'proxmox-problems', 'proxmox-vms', 'proxmox-containers', 'proxmox-storage'],
+        'special': ['report', 'help', 'm']
+    }
+    
+    for category, shortcut_list in categories.items():
+        if category == 'system':
+            menu_parts.append(f"\n[bold yellow]System:[/bold yellow]")
+        elif category == 'kubernetes':
+            menu_parts.append(f"\n[bold blue]Kubernetes:[/bold blue]")
+        elif category == 'proxmox':
+            menu_parts.append(f"\n[bold green]Proxmox:[/bold green]")
+        
+        for shortcut in shortcut_list:
+            if shortcut in shortcuts:
+                question = shortcuts[shortcut]['question']
+                menu_parts.append(f"  • '{shortcut}' - {question}")
+    
+    menu_parts.append(f"\n[dim]💡 Tipp: Sie können auch freie Fragen stellen, z.B. 'Was sind LXC Container?'[/dim]")
+    
+    return "\n".join(menu_parts)
+
+def interpolate_user_input_to_shortcut(user_input: str, shortcuts: Dict) -> Optional[str]:
+    """
+    Intelligente Interpolation mit zweistufiger Modell-Nutzung:
+    1. Schnelles Modell für Intent-Erkennung
+    2. Analysemodell für die eigentliche Antwort
+    """
+    # Prüfe Cache zuerst
+    if user_input in _interpolation_cache:
+        return _interpolation_cache[user_input]
+    
+    # Einfache Keyword-basierte Zuordnung für häufige Fälle
+    keyword_mapping = {
+        'lxc': 'proxmox-containers',
+        'container': 'proxmox-containers',
+        'containers': 'proxmox-containers',
+        'vm': 'proxmox-vms',
+        'vms': 'proxmox-vms',
+        'virtual machine': 'proxmox-vms',
+        'virtual machines': 'proxmox-vms',
+        'k8s': 'k8s',
+        'kubernetes': 'k8s',
+        'pods': 'k8s-pods',
+        'nodes': 'k8s-nodes',
+        'services': 'services',
+        'service': 'services',
+        'storage': 'storage',
+        'disk': 'storage',
+        'speicher': 'storage',
+        'security': 'security',
+        'sicherheit': 'security',
+        'performance': 'performance',
+        'leistung': 'performance',
+        'users': 'users',
+        'benutzer': 'users',
+        'updates': 'updates',
+        'logs': 'logs',
+        'log': 'logs',
+        'report': 'report',
+        'bericht': 'report'
+    }
+    
+    # Prüfe direkte Keyword-Zuordnung
+    for keyword, shortcut in keyword_mapping.items():
+        if keyword in user_input.lower():
+            if shortcut in shortcuts:
+                # Cache das Ergebnis
+                _interpolation_cache[user_input] = shortcut
+                return shortcut
+    
+    # Verwende schnelles Modell für Intent-Erkennung
+    try:
+        model = select_best_model(complex_analysis=False, for_menu=True)
+        
+        # Erstelle Prompt für Interpolation
+        available_shortcuts = list(shortcuts.keys())
+        interpolation_prompt = f"""Du bist ein intelligenter Assistent, der Benutzereingaben zu verfügbaren Kürzelwörtern zuordnet.
+
+Verfügbare Kürzelwörter: {available_shortcuts}
+
+Benutzereingabe: "{user_input}"
+
+Antworte NUR mit dem passenden Kürzelwort oder "none" wenn keine Übereinstimmung.
+Beispiele:
+- "LXC" -> "proxmox-containers"
+- "Container" -> "proxmox-containers" 
+- "VMs" -> "proxmox-vms"
+- "Kubernetes" -> "k8s"
+- "Speicherplatz" -> "storage"
+- "Was ist das Wetter?" -> "none"
+
+Antwort:"""
+        
+        response = query_ollama(interpolation_prompt, model=model, complex_analysis=False)
+        
+        if response:
+            # Bereinige Antwort
+            response = response.strip().lower()
+            if response in shortcuts:
+                # Cache das Ergebnis
+                _interpolation_cache[user_input] = response
+                return response
+            elif response == "none":
+                # Cache das Ergebnis
+                _interpolation_cache[user_input] = None
+                return None
+        
+    except Exception as e:
+        # Bei Fehlern: keine Interpolation
+        pass
+    
+    # Cache das Ergebnis
+    _interpolation_cache[user_input] = None
+    return None
 
 def query_ollama(prompt: str, model: str = None, complex_analysis: bool = False) -> Optional[str]:
     """Sendet eine Anfrage an Ollama und gibt die Antwort zurück"""
@@ -1903,6 +2061,10 @@ def query_ollama(prompt: str, model: str = None, complex_analysis: bool = False)
             "stream": False,
             "options": options
         }
+        
+        # Debug-Ausgabe für Modell-Verwendung
+        if hasattr(console, 'debug_mode') and console.debug_mode:
+            console.print(f"[dim]🔧 Verwende Modell: {model} (complex_analysis={complex_analysis})[/dim]")
         
         response = requests.post(url, json=data, timeout=timeout)
         
@@ -2331,8 +2493,7 @@ def main():
         if not analyzer.log_entries:
             console.print("[yellow]Keine Log-Einträge gefunden.[/yellow]")
             # Trotzdem Chat ermöglichen
-            if Confirm.ask("\n[bold blue]Möchten Sie sich mit Ollama über das System unterhalten?"):
-                start_interactive_chat(system_info, analyzer.log_entries, analyzer.anomalies, args)
+            start_interactive_chat(system_info, analyzer.log_entries, analyzer.anomalies, args)
             return 0
         
         # Analysiere mit Ollama (nur wenn Logs vorhanden)
@@ -2371,8 +2532,7 @@ def main():
             console.print(f"📦 Archiv erstellt: {archive_path}")
         
         # Interaktiver Ollama-Chat
-        if Confirm.ask("\n[bold blue]Möchten Sie sich mit Ollama über das System unterhalten?"):
-            start_interactive_chat(system_info, analyzer.log_entries, analyzer.anomalies, args)
+        start_interactive_chat(system_info, analyzer.log_entries, analyzer.anomalies, args)
         
         return 0
         

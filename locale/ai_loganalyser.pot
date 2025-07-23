@@ -1,0 +1,134 @@
+# German translations for AI Log Analyzer.
+# Copyright (C) 2024 AI Log Analyzer Team.
+# This file is distributed under the same license as the AI Log Analyzer package.
+msgid ""
+msgstr ""
+"Project-Id-Version: AI Log Analyzer 1.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2024-01-01 12:00+0000\n"
+"PO-Revision-Date: 2024-01-01 12:00+0000\n"
+"Last-Translator: Ollama AI\n"
+"Language-Team: German\n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "analysis_running"
+msgstr ""
+
+msgid "analysis_summary"
+msgstr ""
+
+msgid "chat_cached"
+msgstr ""
+
+msgid "chat_exit_commands"
+msgstr ""
+
+msgid "chat_goodbye"
+msgstr ""
+
+msgid "chat_no_response"
+msgstr ""
+
+msgid "chat_ollama"
+msgstr ""
+
+msgid "chat_prompt"
+msgstr ""
+
+msgid "chat_shortcuts"
+msgstr ""
+
+msgid "chat_thinking"
+msgstr ""
+
+msgid "chat_tip"
+msgstr ""
+
+msgid "chat_title"
+msgstr ""
+
+msgid "chat_using_cached"
+msgstr ""
+
+msgid "chat_using_complex_model"
+msgstr ""
+
+msgid "chat_using_fast_model"
+msgstr ""
+
+msgid "chat_using_model"
+msgstr ""
+
+msgid "chat_you"
+msgstr ""
+
+msgid "error_permission_denied"
+msgstr ""
+
+msgid "error_summary"
+msgstr ""
+
+msgid "menu_available_shortcuts"
+msgstr ""
+
+msgid "shortcut_help"
+msgstr ""
+
+msgid "shortcut_k8s"
+msgstr ""
+
+msgid "shortcut_k8s_nodes"
+msgstr ""
+
+msgid "shortcut_k8s_pods"
+msgstr ""
+
+msgid "shortcut_k8s_problems"
+msgstr ""
+
+msgid "shortcut_k8s_resources"
+msgstr ""
+
+msgid "shortcut_logs"
+msgstr ""
+
+msgid "shortcut_performance"
+msgstr ""
+
+msgid "shortcut_processes"
+msgstr ""
+
+msgid "shortcut_security"
+msgstr ""
+
+msgid "shortcut_services"
+msgstr ""
+
+msgid "shortcut_storage"
+msgstr ""
+
+msgid "shortcut_updates"
+msgstr ""
+
+msgid "shortcut_users"
+msgstr ""
+
+msgid "ssh_connecting"
+msgstr ""
+
+msgid "ssh_error"
+msgstr ""
+
+msgid "ssh_failed"
+msgstr ""
+
+msgid "ssh_success"
+msgstr ""
+
+msgid "ssh_timeout"
+msgstr ""
+
