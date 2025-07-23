@@ -1270,18 +1270,10 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
                 ])
                 model = select_best_model(complex_analysis)
 
-            # Zeige Modell-Info nur im Debug-Modus
-            if args and hasattr(args, 'debug') and args.debug:
-                if shortcut_used:
-                    if shortcut_info['complex']:
-                        model_type = _('chat_using_complex_model')
-                        console.print(f"[dim]🔍 {model_type}: {model}[/dim]")
-                    else:
-                        model_type = _('chat_using_model')
-                        console.print(f"[dim]📊 {model_type}: {model}[/dim]")
-                else:
-                    model_type = _('chat_using_model') if not complex_analysis else _('chat_using_complex_model')
-                    console.print(f"[dim]🤖 {model_type}: {model}[/dim]")
+            # Zeige Modell-Info nur im Debug-Modus (ohne doppelte Ausgabe)
+            if args and hasattr(args, 'debug') and args.debug and not shortcut_used:
+                model_type = _('chat_using_model') if not complex_analysis else _('chat_using_complex_model')
+                console.print(f"[dim]🤖 {model_type}: {model}[/dim]")
 
             # Sende an Ollama
             console.print(f"[dim]🤔 {_('chat_thinking')}[/dim]")

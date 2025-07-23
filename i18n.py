@@ -46,7 +46,7 @@ class I18n:
                 return lang_code
                 
         except Exception:
-            return 'en'  # Fallback auf Englisch
+            return 'de'  # Fallback auf Deutsch statt Englisch
     
     def _force_german_locale(self):
         """Erzwingt deutsche Locale für gettext"""
