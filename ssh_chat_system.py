@@ -1130,39 +1130,89 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
         }
     }
     
-    console.print(f"\n[bold blue]💬 {_('chat_title')}[/bold blue]")
+    # Direkte deutsche Übersetzungen als Fallback
+    translations = {
+        'chat_title': 'Interaktiver Chat mit Ollama',
+        'chat_prompt': 'Sie können jetzt weitere Fragen über das analysierte System stellen.',
+        'chat_shortcuts': 'Kürzelwörter für häufige Fragen:',
+        'chat_exit_commands': 'zum Verlassen',
+        'chat_tip': 'Tipp:',
+        'chat_you': 'Sie:',
+        'chat_ollama': 'Ollama:',
+        'chat_thinking': 'Denke nach...',
+        'chat_no_response': 'Keine Antwort von Ollama erhalten',
+        'chat_goodbye': 'Auf Wiedersehen! Danke für die Nutzung des Log-Analyzers.',
+        'chat_using_cached': 'Verwende gecachte Antwort für',
+        'chat_cached': 'gecacht',
+        'chat_using_model': 'Verwende Modell:',
+        'chat_using_fast_model': 'Verwende schnelles Modell:',
+        'chat_using_complex_model': 'Verwende komplexes Modell:',
+        'shortcut_services': 'Welche Services laufen auf dem System?',
+        'shortcut_storage': 'Wie ist der Speicherplatz?',
+        'shortcut_security': 'Gibt es Sicherheitsprobleme?',
+        'shortcut_processes': 'Was sind die Top-Prozesse?',
+        'shortcut_performance': 'Wie ist die System-Performance?',
+        'shortcut_users': 'Welche Benutzer sind aktiv?',
+        'shortcut_updates': 'Gibt es verfügbare System-Updates?',
+        'shortcut_logs': 'Was zeigen die Logs?',
+        'shortcut_k8s': 'Wie ist der Kubernetes-Cluster-Status?',
+        'shortcut_k8s_problems': 'Welche Kubernetes-Probleme gibt es?',
+        'shortcut_k8s_pods': 'Welche Pods laufen im Cluster?',
+        'shortcut_k8s_nodes': 'Wie ist der Node-Status?',
+        'shortcut_k8s_resources': 'Wie ist die Ressourcen-Auslastung im Cluster?',
+        'shortcut_help': 'Zeige verfügbare Kürzelwörter',
+        'shortcut_proxmox': 'Wie ist der Proxmox VE-Status?',
+        'shortcut_proxmox_problems': 'Welche Proxmox-Probleme gibt es?',
+        'shortcut_proxmox_vms': 'Welche VMs laufen auf Proxmox?',
+        'shortcut_proxmox_containers': 'Welche Container laufen auf Proxmox?',
+        'shortcut_proxmox_storage': 'Wie ist der Proxmox-Speicherplatz?',
+        'analysis_running': 'Führe automatische System-Analyse durch...',
+        'analysis_summary': 'System-Analyse:'
+    }
+    
+    # Verwende Übersetzungen oder Fallback
+    def get_text(key):
+        try:
+            result = _(key)
+            if result == key:  # Wenn Übersetzung fehlschlägt
+                return translations.get(key, key)
+            return result
+        except:
+            return translations.get(key, key)
+    
+    console.print(f"\n[bold blue]💬 {get_text('chat_title')}[/bold blue]")
     console.print("="*60)
-    console.print(_('chat_prompt'))
-    console.print(f"\n[bold cyan]{_('chat_shortcuts')}[/bold cyan]")
-    console.print(f"  • 'services' - {_('shortcut_services')}")
-    console.print(f"  • 'storage' - {_('shortcut_storage')}")
-    console.print(f"  • 'security' - {_('shortcut_security')}")
-    console.print(f"  • 'processes' - {_('shortcut_processes')}")
-    console.print(f"  • 'performance' - {_('shortcut_performance')}")
-    console.print(f"  • 'users' - {_('shortcut_users')}")
-    console.print(f"  • 'updates' - {_('shortcut_updates')}")
-    console.print(f"  • 'logs' - {_('shortcut_logs')}")
+    console.print(get_text('chat_prompt'))
+    console.print(f"\n[bold cyan]{get_text('chat_shortcuts')}[/bold cyan]")
+    console.print(f"  • 'services' - {get_text('shortcut_services')}")
+    console.print(f"  • 'storage' - {get_text('shortcut_storage')}")
+    console.print(f"  • 'security' - {get_text('shortcut_security')}")
+    console.print(f"  • 'processes' - {get_text('shortcut_processes')}")
+    console.print(f"  • 'performance' - {get_text('shortcut_performance')}")
+    console.print(f"  • 'users' - {get_text('shortcut_users')}")
+    console.print(f"  • 'updates' - {get_text('shortcut_updates')}")
+    console.print(f"  • 'logs' - {get_text('shortcut_logs')}")
     
     # Kubernetes-Kürzel nur anzeigen, wenn Kubernetes verfügbar ist
     if 'kubernetes_detected' in system_info and system_info['kubernetes_detected']:
-        console.print(f"  • 'k8s' - {_('shortcut_k8s')}")
-        console.print(f"  • 'k8s-problems' - {_('shortcut_k8s_problems')}")
-        console.print(f"  • 'k8s-pods' - {_('shortcut_k8s_pods')}")
-        console.print(f"  • 'k8s-nodes' - {_('shortcut_k8s_nodes')}")
-        console.print(f"  • 'k8s-resources' - {_('shortcut_k8s_resources')}")
+        console.print(f"  • 'k8s' - {get_text('shortcut_k8s')}")
+        console.print(f"  • 'k8s-problems' - {get_text('shortcut_k8s_problems')}")
+        console.print(f"  • 'k8s-pods' - {get_text('shortcut_k8s_pods')}")
+        console.print(f"  • 'k8s-nodes' - {get_text('shortcut_k8s_nodes')}")
+        console.print(f"  • 'k8s-resources' - {get_text('shortcut_k8s_resources')}")
     
     # Proxmox-Kürzel nur anzeigen, wenn Proxmox verfügbar ist
     if 'proxmox_detected' in system_info and system_info['proxmox_detected']:
-        console.print(f"  • 'proxmox' - {_('shortcut_proxmox')}")
-        console.print(f"  • 'proxmox-problems' - {_('shortcut_proxmox_problems')}")
-        console.print(f"  • 'proxmox-vms' - {_('shortcut_proxmox_vms')}")
-        console.print(f"  • 'proxmox-containers' - {_('shortcut_proxmox_containers')}")
-        console.print(f"  • 'proxmox-storage' - {_('shortcut_proxmox_storage')}")
+        console.print(f"  • 'proxmox' - {get_text('shortcut_proxmox')}")
+        console.print(f"  • 'proxmox-problems' - {get_text('shortcut_proxmox_problems')}")
+        console.print(f"  • 'proxmox-vms' - {get_text('shortcut_proxmox_vms')}")
+        console.print(f"  • 'proxmox-containers' - {get_text('shortcut_proxmox_containers')}")
+        console.print(f"  • 'proxmox-storage' - {get_text('shortcut_proxmox_storage')}")
     
-    console.print(f"  • 'help' oder 'm' - {_('shortcut_help')}")
-    console.print(f"  • 'exit', 'quit', 'q', 'bye', 'beenden' {_('chat_exit_commands')}")
+    console.print(f"  • 'help' oder 'm' - {get_text('shortcut_help')}")
+    console.print(f"  • 'exit', 'quit', 'q', 'bye', 'beenden' {get_text('chat_exit_commands')}")
     console.print("="*60)
-    console.print(f"\n[dim]💡 {_('chat_tip')} ['q' to quit, 'm' -> Menü][/dim]")
+    console.print(f"\n[dim]💡 {get_text('chat_tip')} ['q' to quit, 'm' -> Menü][/dim]")
 
     # Zeige Modell-Info nur im Debug-Modus
     if args and hasattr(args, 'debug') and args.debug:
@@ -1187,7 +1237,7 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
             console.print("[blue]💡 Empfohlene Installation: ollama pull llama3.2:3b[/blue]")
 
     # Hinweis, dass die Analyse im Hintergrund läuft
-    console.print(f"\n[dim]🤖 {_('analysis_running')} ({_('chat_tip')} {_('chat_you')} ...)[/dim]")
+    console.print(f"\n[dim]🤖 {get_text('analysis_running')} ({get_text('chat_tip')} {get_text('chat_you')} ...)[/dim]")
 
     def run_initial_analysis():
         initial_analysis_prompt = create_chat_prompt(
@@ -1209,15 +1259,15 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
         try:
             # Zeige das Initialanalyse-Ergebnis, sobald es fertig ist
             if initial_analysis_result['done'] and initial_analysis_result['result']:
-                console.print(f"\n[bold green]🤖 {_('analysis_summary')}[/bold green]")
+                console.print(f"\n[bold green]🤖 {get_text('analysis_summary')}[/bold green]")
                 console.print(initial_analysis_result['result'])
                 initial_analysis_result['done'] = False  # Nur einmal anzeigen
 
-            user_input = console.input(f"\n[bold cyan]{_('chat_you')}[/bold cyan] ").strip()
+            user_input = console.input(f"\n[bold cyan]{get_text('chat_you')}[/bold cyan] ").strip()
 
             # Prüfe auf Exit-Befehle
             if user_input.lower() in ['exit', 'quit', 'q', 'bye', 'beenden', 'tschüss', 'ciao']:
-                console.print(f"\n[green]👋 {_('chat_goodbye')}[/green]")
+                console.print(f"\n[green]👋 {get_text('chat_goodbye')}[/green]")
                 break
 
             # Prüfe auf Kürzelwörter
@@ -1282,21 +1332,21 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
 
             # Zeige Modell-Info nur im Debug-Modus (ohne doppelte Ausgabe)
             if args and hasattr(args, 'debug') and args.debug and not shortcut_used:
-                model_type = _('chat_using_model') if not complex_analysis else _('chat_using_complex_model')
+                model_type = get_text('chat_using_model') if not complex_analysis else get_text('chat_using_complex_model')
                 console.print(f"[dim]🤖 {model_type}: {model}[/dim]")
 
             # Sende an Ollama
-            console.print(f"[dim]🤔 {_('chat_thinking')}[/dim]")
+            console.print(f"[dim]🤔 {get_text('chat_thinking')}[/dim]")
             response = query_ollama(prompt, model=model, complex_analysis=complex_analysis)
 
             if response:
-                console.print(f"\n[bold green]🤖 {_('chat_ollama')}:[/bold green]")
+                console.print(f"\n[bold green]🤖 {get_text('chat_ollama')}:[/bold green]")
                 console.print(response)
 
                 # Cache die Antwort für Kürzelwörter
                 if shortcut_used and cache_key:
                     response_cache[cache_key] = response
-                    console.print(f"[dim]📋 {_('chat_cached')} '{user_input}'[/dim]")
+                    console.print(f"[dim]📋 {get_text('chat_cached')} '{user_input}'[/dim]")
 
                 # Füge zur Chat-Historie hinzu
                 chat_history.append({"role": "user", "content": user_input})
@@ -1306,16 +1356,16 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
                 if len(chat_history) > 10:
                     chat_history = chat_history[-10:]
             else:
-                console.print(f"[red]❌ {_('chat_no_response')}[/red]")
+                console.print(f"[red]❌ {get_text('chat_no_response')}[/red]")
 
             # Zeige das Initialanalyse-Ergebnis ggf. nachträglich
             if initial_analysis_result['done'] and initial_analysis_result['result']:
-                console.print(f"\n[bold green]🤖 {_('analysis_summary')}[/bold green]")
+                console.print(f"\n[bold green]🤖 {get_text('analysis_summary')}[/bold green]")
                 console.print(initial_analysis_result['result'])
                 initial_analysis_result['done'] = False
 
         except KeyboardInterrupt:
-            console.print(f"\n[green]👋 {_('chat_goodbye')}[/green]")
+            console.print(f"\n[green]👋 {get_text('chat_goodbye')}[/green]")
             break
         except Exception as e:
             console.print(f"[red]❌ Fehler im Chat: {e}[/red]")
