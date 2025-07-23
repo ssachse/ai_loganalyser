@@ -1093,7 +1093,7 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
             'cache_key': 'k8s_resources'
         },
         'proxmox': {
-            'question': _('shortcut_proxmox'),
+            'question': 'Wie ist der Status des Proxmox-Clusters?',
             'complex': False,
             'cache_key': 'proxmox_status'
         },
@@ -1896,10 +1896,10 @@ def select_best_model(complex_analysis: bool = False, for_menu: bool = False) ->
             console.print(f"[dim]🎯 Komplexe Analyse: Verwende {selected_model}[/dim]")
         return selected_model
     else:
-        # Für einfache Analysen: Priorisiere schnellere Modelle
+        # Für einfache Analysen: Priorisiere Modelle mit mindestens 3B Parametern
         fast_models = [
-            "qwen:0.5b", "qwen2.5-coder:1.5b-base", "phi4:latest",  # Sehr schnelle Modelle
-            "llama3.2:3b", "gemma3n:latest", "mistral:7b"  # Schnelle Modelle
+            "llama3.2:3b", "mistral:7b", "gemma3n:latest",  # Mindestens 3B Parameter
+            "qwen2.5-coder:1.5b-base", "phi4:latest", "qwen:0.5b"  # Kleinere Modelle als Fallback
         ]
         
         for fast_model in fast_models:
