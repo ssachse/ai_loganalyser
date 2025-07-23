@@ -4483,14 +4483,50 @@ def create_intelligent_menu(shortcuts: Dict) -> str:
     menu_parts = []
     menu_parts.append(f"\n[bold cyan]Verfügbare Kürzelwörter:[/bold cyan]")
     
-    # Gruppiere Shortcuts nach Kategorien
+    # Gruppiere Shortcuts nach Kategorien mit numerischen Kürzeln
     categories = {
-        'system': ['services', 'storage', 'security', 'processes', 'performance', 'users', 'updates', 'logs'],
-        'kubernetes': ['k8s', 'k8s-problems', 'k8s-pods', 'k8s-nodes', 'k8s-resources'],
-        'proxmox': ['proxmox', 'proxmox-problems', 'proxmox-vms', 'proxmox-containers', 'proxmox-storage'],
-        'docker': ['docker', 'docker-problems', 'docker-containers', 'docker-images'],
-        'mailservers': ['mailservers', 'mailcow', 'mailcow-problems', 'postfix', 'postfix-problems'],
-        'tools': ['report', 'cache', 'clear']
+        'system': [
+            ('s1', 'services'),
+            ('s2', 'storage'), 
+            ('s3', 'security'),
+            ('s4', 'processes'),
+            ('s5', 'performance'),
+            ('s6', 'users'),
+            ('s7', 'updates'),
+            ('s8', 'logs')
+        ],
+        'kubernetes': [
+            ('k1', 'k8s'),
+            ('k2', 'k8s-problems'),
+            ('k3', 'k8s-pods'),
+            ('k4', 'k8s-nodes'),
+            ('k5', 'k8s-resources')
+        ],
+        'proxmox': [
+            ('p1', 'proxmox'),
+            ('p2', 'proxmox-problems'),
+            ('p3', 'proxmox-vms'),
+            ('p4', 'proxmox-containers'),
+            ('p5', 'proxmox-storage')
+        ],
+        'docker': [
+            ('d1', 'docker'),
+            ('d2', 'docker-problems'),
+            ('d3', 'docker-containers'),
+            ('d4', 'docker-images')
+        ],
+        'mailservers': [
+            ('m1', 'mailservers'),
+            ('m2', 'mailcow'),
+            ('m3', 'mailcow-problems'),
+            ('m4', 'postfix'),
+            ('m5', 'postfix-problems')
+        ],
+        'tools': [
+            ('t1', 'report'),
+            ('t2', 'cache'),
+            ('t3', 'clear')
+        ]
     }
     
     # Verwende Übersetzungen für Menü-Texte
@@ -4511,13 +4547,14 @@ def create_intelligent_menu(shortcuts: Dict) -> str:
         elif category == 'tools':
             menu_parts.append(f"\n[bold yellow]Berichte & Tools:[/bold yellow]")
         
-        for shortcut in shortcut_list:
+        for code, shortcut in shortcut_list:
             if shortcut in shortcuts:
                 # Verwende übersetzte Fragen aus den Shortcuts
                 question = shortcuts[shortcut]['question']
-                menu_parts.append(f"  • '{shortcut}' - {question}")
+                menu_parts.append(f"  • {code} / '{shortcut}' - {question}")
     
     menu_parts.append(f"\n[dim]💡 Tipp: Sie können auch freie Fragen stellen, z.B. 'Was sind LXC Container?'[/dim]")
+    menu_parts.append(f"[dim]💡 Schnellzugriff: Verwenden Sie Kürzel wie 's1', 'k3', 'p4' etc.[/dim]")
     
     return "\n".join(menu_parts)
 
@@ -4530,6 +4567,52 @@ def interpolate_user_input_to_shortcut(user_input: str, shortcuts: Dict) -> Opti
     # Prüfe Cache zuerst
     if user_input in _interpolation_cache:
         return _interpolation_cache[user_input]
+    
+    # Numerische Kürzel-Mapping
+    numeric_mapping = {
+        # System
+        's1': 'services',
+        's2': 'storage',
+        's3': 'security',
+        's4': 'processes',
+        's5': 'performance',
+        's6': 'users',
+        's7': 'updates',
+        's8': 'logs',
+        # Kubernetes
+        'k1': 'k8s',
+        'k2': 'k8s-problems',
+        'k3': 'k8s-pods',
+        'k4': 'k8s-nodes',
+        'k5': 'k8s-resources',
+        # Proxmox
+        'p1': 'proxmox',
+        'p2': 'proxmox-problems',
+        'p3': 'proxmox-vms',
+        'p4': 'proxmox-containers',
+        'p5': 'proxmox-storage',
+        # Docker
+        'd1': 'docker',
+        'd2': 'docker-problems',
+        'd3': 'docker-containers',
+        'd4': 'docker-images',
+        # Mailserver
+        'm1': 'mailservers',
+        'm2': 'mailcow',
+        'm3': 'mailcow-problems',
+        'm4': 'postfix',
+        'm5': 'postfix-problems',
+        # Tools
+        't1': 'report',
+        't2': 'cache',
+        't3': 'clear'
+    }
+    
+    # Prüfe numerische Kürzel zuerst
+    if user_input.lower() in numeric_mapping:
+        shortcut = numeric_mapping[user_input.lower()]
+        if shortcut in shortcuts:
+            return shortcut
     
     # Einfache Keyword-basierte Zuordnung für häufige Fälle
     keyword_mapping = {
