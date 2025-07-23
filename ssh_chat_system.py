@@ -1837,23 +1837,36 @@ def select_best_model(complex_analysis: bool = False, for_menu: bool = False) ->
         selected_model = sorted_models[0]
         return selected_model['name']
     
-        # Sortiere Modelle nach Größe (kleinste = schnellste zuerst)
-    sorted_models = sorted(models, key=lambda x: x.get('size', float('inf')))
-    
+    # Modell-Auswahl basierend auf Namen (da Größen nicht korrekt abgerufen werden)
     if complex_analysis:
-        # Für komplexe Analysen: Suche nach mittleren/großen Modellen
-        medium_models = [m for m in sorted_models if m.get('size', 0) >= 3 * 1024 * 1024 * 1024]  # >= 3GB
-        if medium_models:
-            selected_model = medium_models[0]
-            return selected_model['name']
-        else:
-            # Fallback auf kleinstes verfügbares Modell
-            selected_model = sorted_models[0]
-            return selected_model['name']
+        # Für komplexe Analysen: Priorisiere größere Modelle
+        priority_models = [
+            "llama3.1:8b", "deepseek-r1:14b", "qwen3:14b", "openthinker:32b",  # Große Modelle
+            "mistral:7b", "llama3.2:3b", "codellama:7b", "deepseek-coder:latest",  # Mittlere Modelle
+            "qwen2.5-coder:1.5b-base", "phi4:latest", "gemma3n:latest"  # Kleinere Modelle
+        ]
+        
+        for priority_model in priority_models:
+            for model in models:
+                if model['name'] == priority_model:
+                    return model['name']
+        
+        # Fallback: Verwende das erste verfügbare Modell
+        return models[0]['name']
     else:
-        # Für einfache Analysen: Verwende das schnellste (kleinste) Modell
-        selected_model = sorted_models[0]
-        return selected_model['name']
+        # Für einfache Analysen: Priorisiere schnellere Modelle
+        fast_models = [
+            "qwen:0.5b", "qwen2.5-coder:1.5b-base", "phi4:latest",  # Sehr schnelle Modelle
+            "llama3.2:3b", "gemma3n:latest", "mistral:7b"  # Schnelle Modelle
+        ]
+        
+        for fast_model in fast_models:
+            for model in models:
+                if model['name'] == fast_model:
+                    return model['name']
+        
+        # Fallback: Verwende das erste verfügbare Modell
+        return models[0]['name']
 
 
 def query_ollama(prompt: str, model: str = None, complex_analysis: bool = False) -> Optional[str]:
