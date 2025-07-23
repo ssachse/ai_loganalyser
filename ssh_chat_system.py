@@ -1264,16 +1264,8 @@ Zusammenfassung:"""
                         console.print(f"[dim]Verwende interpoliertes Kürzelwort: {user_input} (aus '{original_input}')[/dim]")
                     except KeyError as e:
                         console.print(f"[red]❌ Fehler: Shortcut '{interpolated_shortcut}' nicht gefunden. Verfügbare: {list(shortcuts.keys())}[/red]")
-                        # Versuche direkte Zuordnung als Fallback
-                        if 'container' in user_input_lower and 'proxmox-containers' in shortcuts:
-                            shortcut_info = shortcuts['proxmox-containers']
-                            user_input = shortcut_info['question']
-                            complex_analysis = shortcut_info['complex']
-                            cache_key = shortcut_info['cache_key']
-                            shortcut_used = True
-                            console.print(f"[dim]Verwende Fallback-Kürzelwort: {user_input} (aus '{original_input}')[/dim]")
-                        else:
-                            continue
+                        console.print(f"[dim]🔍 Debug: interpolated_shortcut='{interpolated_shortcut}', user_input='{user_input_lower}'[/dim]")
+                        continue
                     
                     # Debug-Ausgabe für Modell-Auswahl
                     if hasattr(console, 'debug_mode') and console.debug_mode:
@@ -1335,6 +1327,7 @@ Zusammenfassung:"""
 
             # Intelligentes Menü anzeigen
             if user_input.lower() in ['help', 'm', 'menu']:
+                console.print(f"[dim]🔍 Debug: Menü-Anfrage erkannt: '{user_input.lower()}'[/dim]")
                 intelligent_menu = create_intelligent_menu(shortcuts)
                 console.print(intelligent_menu)
                 continue
@@ -1997,6 +1990,10 @@ def interpolate_user_input_to_shortcut(user_input: str, shortcuts: Dict) -> Opti
                 # Cache das Ergebnis
                 _interpolation_cache[user_input] = shortcut
                 return shortcut
+            else:
+                # Debug: Shortcut nicht gefunden
+                if hasattr(console, 'debug_mode') and console.debug_mode:
+                    console.print(f"[dim]🔍 Debug: Keyword '{keyword}' gefunden, aber Shortcut '{shortcut}' nicht in shortcuts: {list(shortcuts.keys())}[/dim]")
     
     # Verwende schnelles Modell für Intent-Erkennung
     try:
@@ -2030,8 +2027,9 @@ Antwort:"""
             response = response.replace('_', '-')
             
             # Debug-Ausgabe
+            console.print(f"[dim]🔍 Debug: Modell-Interpolation '{user_input}' -> '{response}'[/dim]")
             if hasattr(console, 'debug_mode') and console.debug_mode:
-                console.print(f"[dim]🔍 Interpolation: '{user_input}' -> '{response}'[/dim]")
+                console.print(f"[dim]🔍 Verfügbare Shortcuts: {list(shortcuts.keys())}[/dim]")
             
             if response in shortcuts:
                 # Cache das Ergebnis
