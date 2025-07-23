@@ -19,6 +19,8 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeEl
 from rich.table import Table
 from rich.panel import Panel
 from rich.prompt import Prompt, Confirm
+import threading
+import time
 
 # Importiere den bestehenden Log-Analyzer
 from log_analyzer import LogAnalyzer, LogEntry, LogLevel, Anomaly
@@ -301,6 +303,10 @@ class SSHLogCollector:
         # 7. Kubernetes-Analyse (falls verfügbar)
         k8s_info = self._analyze_kubernetes()
         system_info.update(k8s_info)
+        
+        # 8. Proxmox-Analyse (falls verfügbar)
+        proxmox_info = self._analyze_proxmox()
+        system_info.update(proxmox_info)
         
         return system_info
     
@@ -666,6 +672,157 @@ class SSHLogCollector:
         
         return k8s_info
     
+    def _analyze_proxmox(self) -> Dict[str, Any]:
+        """Analysiert Proxmox VE, falls verfügbar"""
+        proxmox_info = {}
+        
+        # Prüfe ob Proxmox verfügbar ist
+        proxmox_check = self.execute_remote_command('which pvesh')
+        if not proxmox_check:
+            return proxmox_info
+        
+        console.print("[dim]🖥️  Analysiere Proxmox VE...[/dim]")
+        
+        try:
+            # Proxmox-Version
+            version = self.execute_remote_command('pveversion -v')
+            if version:
+                proxmox_info['proxmox_version'] = version
+            
+            # Cluster-Status
+            cluster_status = self.execute_remote_command('pvesh get /cluster/status')
+            if cluster_status:
+                proxmox_info['cluster_status'] = cluster_status
+            
+            # Nodes
+            nodes = self.execute_remote_command('pvesh get /nodes')
+            if nodes:
+                proxmox_info['nodes'] = nodes
+            
+            # Node-Details (erste 3 Nodes)
+            node_details = {}
+            for i in range(3):  # Prüfe erste 3 Nodes
+                node_name = self.execute_remote_command(f'pvesh get /nodes | grep -o "node[0-9]*" | head -{i+1} | tail -1')
+                if node_name:
+                    node_name = node_name.strip()
+                    # Node-Status
+                    status = self.execute_remote_command(f'pvesh get /nodes/{node_name}/status')
+                    if status:
+                        node_details[f'{node_name}_status'] = status
+                    
+                    # VMs auf diesem Node
+                    vms = self.execute_remote_command(f'pvesh get /nodes/{node_name}/qemu')
+                    if vms:
+                        node_details[f'{node_name}_vms'] = vms
+                    
+                    # Container auf diesem Node
+                    containers = self.execute_remote_command(f'pvesh get /nodes/{node_name}/lxc')
+                    if containers:
+                        node_details[f'{node_name}_containers'] = containers
+            
+            if node_details:
+                proxmox_info['node_details'] = node_details
+            
+            # Storage-Informationen
+            storage = self.execute_remote_command('pvesh get /storage')
+            if storage:
+                proxmox_info['storage'] = storage
+            
+            # Netzwerk-Informationen
+            network = self.execute_remote_command('pvesh get /cluster/config')
+            if network:
+                proxmox_info['network_config'] = network
+            
+            # Probleme identifizieren
+            problems = []
+            
+            # Prüfe auf nicht-online Nodes
+            offline_nodes = self.execute_remote_command('pvesh get /nodes | grep -v "online"')
+            if offline_nodes:
+                problems.append(f"Offline Nodes:\n{offline_nodes}")
+            
+            # Prüfe auf gestoppte VMs
+            stopped_vms = self.execute_remote_command('pvesh get /nodes --output-format=json | jq -r ".[] | .node" | head -3 | while read node; do pvesh get /nodes/$node/qemu --output-format=json | jq -r ".[] | select(.status != \"running\") | .name" 2>/dev/null; done')
+            if stopped_vms:
+                problems.append(f"Gestoppte VMs:\n{stopped_vms}")
+            
+            # Prüfe auf gestoppte Container
+            stopped_containers = self.execute_remote_command('pvesh get /nodes --output-format=json | jq -r ".[] | .node" | head -3 | while read node; do pvesh get /nodes/$node/lxc --output-format=json | jq -r ".[] | select(.status != \"running\") | .name" 2>/dev/null; done')
+            if stopped_containers:
+                problems.append(f"Gestoppte Container:\n{stopped_containers}")
+            
+            # Prüfe auf Storage-Probleme
+            storage_problems = self.execute_remote_command('pvesh get /storage | grep -i "error\|failed\|unavailable"')
+            if storage_problems:
+                problems.append(f"Storage-Probleme:\n{storage_problems}")
+            
+            # Prüfe auf Backup-Status
+            backup_status = self.execute_remote_command('pvesh get /nodes --output-format=json | jq -r ".[] | .node" | head -3 | while read node; do pvesh get /nodes/$node/tasks --output-format=json | jq -r ".[] | select(.type == \"vzdump\") | select(.status != \"OK\") | .id" 2>/dev/null; done')
+            if backup_status:
+                problems.append(f"Backup-Probleme:\n{backup_status}")
+            
+            # Prüfe auf Ressourcen-Auslastung
+            resource_usage = self.execute_remote_command('pvesh get /nodes --output-format=json | jq -r ".[] | .node" | head -3 | while read node; do echo "=== $node ==="; pvesh get /nodes/$node/status --output-format=json | jq -r ".cpuinfo | .cpus, .model" 2>/dev/null; pvesh get /nodes/$node/status --output-format=json | jq -r ".memory | .total, .used, .free" 2>/dev/null; done')
+            if resource_usage:
+                proxmox_info['resource_usage'] = resource_usage
+            
+            # Prüfe auf HA-Status (falls verfügbar)
+            ha_status = self.execute_remote_command('pvesh get /cluster/ha/status')
+            if ha_status:
+                proxmox_info['ha_status'] = ha_status
+                
+                # Prüfe auf HA-Probleme
+                ha_problems = self.execute_remote_command('pvesh get /cluster/ha/status | grep -i "error\|failed\|stopped"')
+                if ha_problems:
+                    problems.append(f"HA-Probleme:\n{ha_problems}")
+            
+            # Prüfe auf ZFS-Status (falls verwendet)
+            zfs_status = self.execute_remote_command('zpool status')
+            if zfs_status:
+                proxmox_info['zfs_status'] = zfs_status
+                
+                # Prüfe auf ZFS-Probleme
+                zfs_problems = self.execute_remote_command('zpool status | grep -i "degraded\|faulted\|offline"')
+                if zfs_problems:
+                    problems.append(f"ZFS-Probleme:\n{zfs_problems}")
+            
+            # Prüfe auf Ceph-Status (falls verwendet)
+            ceph_status = self.execute_remote_command('ceph status')
+            if ceph_status:
+                proxmox_info['ceph_status'] = ceph_status
+                
+                # Prüfe auf Ceph-Probleme
+                ceph_problems = self.execute_remote_command('ceph status | grep -i "health\|error\|warning"')
+                if ceph_problems:
+                    problems.append(f"Ceph-Probleme:\n{ceph_problems}")
+            
+            # Speichere identifizierte Probleme
+            if problems:
+                proxmox_info['problems'] = problems
+                proxmox_info['problems_count'] = len(problems)
+            
+            # Prüfe auf Proxmox-Tools
+            tools_check = {}
+            tools = ['qm', 'pct', 'pvesm', 'pveceph']
+            for tool in tools:
+                tool_path = self.execute_remote_command(f'which {tool}')
+                if tool_path:
+                    tools_check[tool] = True
+            
+            if tools_check:
+                proxmox_info['available_tools'] = tools_check
+            
+            if proxmox_info:
+                proxmox_info['proxmox_detected'] = True
+                console.print("[green]✅ Proxmox VE gefunden und analysiert[/green]")
+            else:
+                console.print("[yellow]⚠️  pvesh verfügbar, aber keine Proxmox-Daten erreichbar[/yellow]")
+                
+        except Exception as e:
+            console.print(f"[yellow]⚠️  Fehler bei Proxmox-Analyse: {str(e)[:100]}[/yellow]")
+        
+        return proxmox_info
+    
     def collect_logs(self, hours_back: int = 24) -> str:
         """Sammelt Logs vom Zielsystem"""
         console.print(f"[blue]Sammle Logs der letzten {hours_back} Stunden...[/blue]")
@@ -854,15 +1011,11 @@ class SSHLogCollector:
 def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEntry], anomalies: List[Anomaly]):
     """Startet interaktiven Chat mit Ollama"""
     
-    # Erstelle System-Kontext
     system_context = create_system_context(system_info, log_entries, anomalies)
-    
-    # Chat-Historie
     chat_history = []
-    
-    # Cache für häufige Antworten
     response_cache = {}
-    
+    initial_analysis_result = {'done': False, 'result': None}
+
     # Kürzelwörter für häufige Fragen mit Modell-Komplexität
     shortcuts = {
         'services': {
@@ -930,6 +1083,31 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
             'complex': False,
             'cache_key': 'k8s_resources'
         },
+        'proxmox': {
+            'question': _('shortcut_proxmox'),
+            'complex': False,
+            'cache_key': 'proxmox_status'
+        },
+        'proxmox-problems': {
+            'question': _('shortcut_proxmox_problems'),
+            'complex': True,
+            'cache_key': 'proxmox_problems'
+        },
+        'proxmox-vms': {
+            'question': _('shortcut_proxmox_vms'),
+            'complex': False,
+            'cache_key': 'proxmox_vms'
+        },
+        'proxmox-containers': {
+            'question': _('shortcut_proxmox_containers'),
+            'complex': False,
+            'cache_key': 'proxmox_containers'
+        },
+        'proxmox-storage': {
+            'question': _('shortcut_proxmox_storage'),
+            'complex': False,
+            'cache_key': 'proxmox_storage'
+        },
         'help': {
             'question': _('shortcut_help'),
             'complex': False,
@@ -963,34 +1141,53 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
         console.print(f"  • 'k8s-nodes' - {_('shortcut_k8s_nodes')}")
         console.print(f"  • 'k8s-resources' - {_('shortcut_k8s_resources')}")
     
+    # Proxmox-Kürzel nur anzeigen, wenn Proxmox verfügbar ist
+    if 'proxmox_detected' in system_info and system_info['proxmox_detected']:
+        console.print(f"  • 'proxmox' - {_('shortcut_proxmox')}")
+        console.print(f"  • 'proxmox-problems' - {_('shortcut_proxmox_problems')}")
+        console.print(f"  • 'proxmox-vms' - {_('shortcut_proxmox_vms')}")
+        console.print(f"  • 'proxmox-containers' - {_('shortcut_proxmox_containers')}")
+        console.print(f"  • 'proxmox-storage' - {_('shortcut_proxmox_storage')}")
+    
     console.print(f"  • 'help' oder 'm' - {_('shortcut_help')}")
     console.print(f"  • 'exit', 'quit', 'q', 'bye', 'beenden' {_('chat_exit_commands')}")
     console.print("="*60)
     console.print(f"\n[dim]💡 {_('chat_tip')}: ['q' to quit, 'm' -> Menü][/dim]")
-    
-    # Automatische System-Analyse beim Start
-    console.print(f"\n[dim]🤖 {_('analysis_running')}[/dim]")
-    initial_analysis_prompt = create_chat_prompt(
-        system_context, 
-        "Analysiere das System und gib eine kurze Zusammenfassung der wichtigsten Punkte, Probleme und Empfehlungen.",
-        []
-    )
-    initial_analysis = query_ollama(initial_analysis_prompt, complex_analysis=True)
-    
-    if initial_analysis:
-        console.print(f"\n[bold green]🤖 {_('analysis_summary')}[/bold green]")
-        console.print(initial_analysis)
-    
+
+    # Hinweis, dass die Analyse im Hintergrund läuft
+    console.print(f"\n[dim]🤖 {_('analysis_running')} ({_('chat_tip')}: {_('chat_you')} ...)[/dim]")
+
+    def run_initial_analysis():
+        initial_analysis_prompt = create_chat_prompt(
+            system_context,
+            "Analysiere das System und gib eine kurze Zusammenfassung der wichtigsten Punkte, Probleme und Empfehlungen.",
+            []
+        )
+        # Nutze ein schnelles Modell für die Initialanalyse
+        result = query_ollama(initial_analysis_prompt, model="llama2:7b", complex_analysis=False)
+        initial_analysis_result['result'] = result
+        initial_analysis_result['done'] = True
+
+    # Starte die Initialanalyse im Hintergrund
+    analysis_thread = threading.Thread(target=run_initial_analysis, daemon=True)
+    analysis_thread.start()
+
     # Chat-Loop
     while True:
         try:
+            # Zeige das Initialanalyse-Ergebnis, sobald es fertig ist
+            if initial_analysis_result['done'] and initial_analysis_result['result']:
+                console.print(f"\n[bold green]🤖 {_('analysis_summary')}[/bold green]")
+                console.print(initial_analysis_result['result'])
+                initial_analysis_result['done'] = False  # Nur einmal anzeigen
+
             user_input = console.input(f"\n[bold cyan]{_('chat_you')}[/bold cyan] ").strip()
-            
+
             # Prüfe auf Exit-Befehle
             if user_input.lower() in ['exit', 'quit', 'q', 'bye', 'beenden', 'tschüss', 'ciao']:
                 console.print(f"\n[green]👋 {_('chat_goodbye')}[/green]")
                 break
-            
+
             # Prüfe auf Kürzelwörter
             shortcut_used = False
             if user_input.lower() in shortcuts:
@@ -999,20 +1196,20 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
                 complex_analysis = shortcut_info['complex']
                 cache_key = shortcut_info['cache_key']
                 shortcut_used = True
-                
+
                 console.print(f"[dim]Verwende: {user_input}[/dim]")
-                
+
                 # Prüfe Cache für Kürzelwörter
                 if cache_key and cache_key in response_cache:
                     console.print(f"[dim]📋 {_('chat_using_cached')} '{user_input}'[/dim]")
                     console.print(f"\n[bold green]🤖 {_('chat_ollama')}:[/bold green]")
                     console.print(response_cache[cache_key])
-                    
+
                     # Füge zur Chat-Historie hinzu
                     chat_history.append({"role": "user", "content": user_input})
                     chat_history.append({"role": "assistant", "content": response_cache[cache_key]})
                     continue
-            
+
             # Hilfe anzeigen
             if user_input.lower() in ['help', 'm']:
                 console.print(f"\n[bold cyan]{_('menu_available_shortcuts')}[/bold cyan]")
@@ -1020,52 +1217,61 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
                     if shortcut not in ['help', 'm']:
                         console.print(f"  • '{shortcut}' - {info['question']}")
                 continue
-            
+
             if not user_input:
                 continue
-            
+
             # Erstelle Chat-Prompt
             prompt = create_chat_prompt(system_context, user_input, chat_history)
-            
-            # Bestimme Modell-Komplexität basierend auf Frage oder Kürzelwort
-            if not shortcut_used:
+
+            # Shortcut-Erkennung: immer schnelles Modell
+            if shortcut_used:
+                model = "llama2:7b"
+            else:
+                # Bestimme Modell-Komplexität für freie Fragen
                 complex_analysis = any(keyword in user_input.lower() for keyword in [
                     'problem', 'issue', 'error', 'failure', 'crash', 'anomaly', 'security',
                     'performance', 'bottleneck', 'optimization', 'recommendation', 'analysis',
                     'investigate', 'debug', 'troubleshoot', 'diagnose'
                 ])
-            
-            # Zeige Modell-Auswahl
-            model = select_best_model(complex_analysis)
+                model = select_best_model(complex_analysis)
+
             if shortcut_used:
-                model_type = _('chat_using_fast_model') if not complex_analysis else _('chat_using_complex_model')
+                model_type = _('chat_using_fast_model')
                 console.print(f"[dim]⚡ {model_type}: {model}[/dim]")
             else:
-                console.print(f"[dim]🤖 {_('chat_using_model')} {model}[/dim]")
-            
+                model_type = _('chat_using_model') if not complex_analysis else _('chat_using_complex_model')
+                console.print(f"[dim]🤖 {model_type} {model}[/dim]")
+
             # Sende an Ollama
             console.print(f"[dim]🤔 {_('chat_thinking')}[/dim]")
             response = query_ollama(prompt, model=model, complex_analysis=complex_analysis)
-            
+
             if response:
                 console.print(f"\n[bold green]🤖 {_('chat_ollama')}:[/bold green]")
                 console.print(response)
-                
+
                 # Cache die Antwort für Kürzelwörter
                 if shortcut_used and cache_key:
                     response_cache[cache_key] = response
                     console.print(f"[dim]📋 {_('chat_cached')} '{user_input}'[/dim]")
-                
+
                 # Füge zur Chat-Historie hinzu
                 chat_history.append({"role": "user", "content": user_input})
                 chat_history.append({"role": "assistant", "content": response})
-                
+
                 # Begrenze Historie auf letzte 10 Nachrichten
                 if len(chat_history) > 10:
                     chat_history = chat_history[-10:]
             else:
                 console.print(f"[red]❌ {_('chat_no_response')}[/red]")
-                
+
+            # Zeige das Initialanalyse-Ergebnis ggf. nachträglich
+            if initial_analysis_result['done'] and initial_analysis_result['result']:
+                console.print(f"\n[bold green]🤖 {_('analysis_summary')}[/bold green]")
+                console.print(initial_analysis_result['result'])
+                initial_analysis_result['done'] = False
+
         except KeyboardInterrupt:
             console.print(f"\n[green]👋 {_('chat_goodbye')}[/green]")
             break
@@ -1205,6 +1411,56 @@ def create_system_context(system_info: Dict[str, Any], log_entries: List[LogEntr
         # Kubernetes-Probleme
         if 'problems_count' in system_info and system_info['problems_count'] > 0:
             context_parts.append(f"\nKUBERNETES-PROBLEME ({system_info['problems_count']} gefunden):")
+            for i, problem in enumerate(system_info['problems'], 1):
+                context_parts.append(f"Problem {i}: {problem}")
+    
+    # Proxmox-Cluster
+    if 'proxmox_detected' in system_info and system_info['proxmox_detected']:
+        context_parts.append("\n=== PROXMOX-CLUSTER ===")
+        
+        if 'proxmox_version' in system_info:
+            context_parts.append(f"Version: {system_info['proxmox_version']}")
+        
+        if 'cluster_status' in system_info:
+            context_parts.append("Cluster-Status:")
+            context_parts.append(system_info['cluster_status'])
+        
+        if 'nodes' in system_info:
+            context_parts.append("Nodes:")
+            context_parts.append(system_info['nodes'])
+        
+        if 'node_details' in system_info:
+            context_parts.append("Node-Details:")
+            for key, value in system_info['node_details'].items():
+                context_parts.append(f"{key}: {value}")
+        
+        if 'storage' in system_info:
+            context_parts.append("Storage:")
+            context_parts.append(system_info['storage'])
+        
+        if 'network_config' in system_info:
+            context_parts.append("Netzwerk-Konfiguration:")
+            context_parts.append(system_info['network_config'])
+        
+        if 'resource_usage' in system_info:
+            context_parts.append("Ressourcen-Auslastung:")
+            context_parts.append(system_info['resource_usage'])
+        
+        if 'ha_status' in system_info:
+            context_parts.append("HA-Status:")
+            context_parts.append(system_info['ha_status'])
+        
+        if 'zfs_status' in system_info:
+            context_parts.append("ZFS-Status:")
+            context_parts.append(system_info['zfs_status'])
+        
+        if 'ceph_status' in system_info:
+            context_parts.append("Ceph-Status:")
+            context_parts.append(system_info['ceph_status'])
+        
+        # Proxmox-Probleme
+        if 'problems_count' in system_info and system_info['problems_count'] > 0:
+            context_parts.append(f"\nPROXMOX-PROBLEME ({system_info['problems_count']} gefunden):")
             for i, problem in enumerate(system_info['problems'], 1):
                 context_parts.append(f"Problem {i}: {problem}")
         
@@ -1625,6 +1881,54 @@ def main():
             if 'pod_resource_usage' in system_info:
                 console.print("\n[bold cyan]Pod-Ressourcen:[/bold cyan]")
                 console.print(system_info['pod_resource_usage'])
+        
+        # Proxmox-Status (falls verfügbar)
+        if 'proxmox_detected' in system_info and system_info['proxmox_detected']:
+            console.print("\n[bold blue]🖥️ Proxmox VE[/bold blue]")
+            console.print("="*60)
+            
+            # Version
+            if 'proxmox_version' in system_info:
+                console.print(f"\n[bold cyan]Proxmox-Version:[/bold cyan] {system_info['proxmox_version']}")
+            
+            # Cluster-Status
+            if 'cluster_status' in system_info:
+                console.print("\n[bold cyan]Cluster-Status:[/bold cyan]")
+                console.print(system_info['cluster_status'])
+            
+            # Nodes
+            if 'nodes' in system_info:
+                console.print("\n[bold cyan]Nodes:[/bold cyan]")
+                console.print(system_info['nodes'])
+            
+            # Probleme
+            if 'problems_count' in system_info and system_info['problems_count'] > 0:
+                console.print(f"\n[bold red]⚠️  {system_info['problems_count']} Probleme gefunden:[/bold red]")
+                for i, problem in enumerate(system_info['problems'], 1):
+                    console.print(f"\n[red]Problem {i}:[/red]")
+                    console.print(problem)
+            else:
+                console.print("\n[green]✅ Keine Proxmox-Probleme gefunden[/green]")
+            
+            # Storage
+            if 'storage' in system_info:
+                console.print("\n[bold cyan]Storage:[/bold cyan]")
+                console.print(system_info['storage'])
+            
+            # HA-Status
+            if 'ha_status' in system_info:
+                console.print("\n[bold cyan]HA-Status:[/bold cyan]")
+                console.print(system_info['ha_status'])
+            
+            # ZFS-Status
+            if 'zfs_status' in system_info:
+                console.print("\n[bold cyan]ZFS-Status:[/bold cyan]")
+                console.print(system_info['zfs_status'])
+            
+            # Ceph-Status
+            if 'ceph_status' in system_info:
+                console.print("\n[bold cyan]Ceph-Status:[/bold cyan]")
+                console.print(system_info['ceph_status'])
         
         # Speicherplatz-Details
         if 'largest_directories' in system_info:
