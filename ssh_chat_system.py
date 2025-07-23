@@ -1157,9 +1157,23 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
     # Zeige verfügbare Modelle und Empfehlungen
     available_models = get_available_models()
     if available_models:
+        # Prüfe auf qwen:0.5b für Menü
+        menu_model = None
+        for model in available_models:
+            if "qwen" in model['name'].lower() and "0.5b" in model['name']:
+                menu_model = model
+                break
+        
+        if menu_model:
+            console.print(f"[green]⚡ Ultraschnelles Menü-Modell verfügbar: {menu_model['name']}[/green]")
+        else:
+            console.print("[blue]💡 Für ultraschnelle Menü-Erkennung empfehle ich:[/blue]")
+            console.print("[dim]   ollama pull qwen:0.5b[/dim]")
+        
+        # Zeige schnellstes Modell für normale Analysen
         sorted_models = sorted(available_models, key=lambda x: x.get('size', float('inf')))
         fastest_model = sorted_models[0]
-        console.print(f"[green]✅ Schnellstes verfügbares Modell: {fastest_model['name']}[/green]")
+        console.print(f"[green]✅ Schnellstes Modell für Analysen: {fastest_model['name']}[/green]")
         
         # Empfehle bessere Modelle wenn nötig
         if fastest_model.get('size', 0) < 1 * 1024 * 1024 * 1024:  # < 1GB
@@ -1168,7 +1182,9 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
             console.print("[dim]   ollama pull mistral:7b[/dim]")
     else:
         console.print("[yellow]⚠️  Keine Ollama-Modelle gefunden[/yellow]")
-        console.print("[blue]💡 Empfohlene Installation: ollama pull llama3.2:3b[/blue]")
+        console.print("[blue]💡 Empfohlene Installation:[/blue]")
+        console.print("[dim]   ollama pull qwen:0.5b (für Menü)[/dim]")
+        console.print("[dim]   ollama pull llama3.2:3b (für Analysen)[/dim]")
 
     # Hinweis, dass die Analyse im Hintergrund läuft
     console.print(f"\n[dim]🤖 {_('analysis_running')} ({_('chat_tip')} {_('chat_you')} ...)[/dim]")
@@ -1179,8 +1195,8 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
             "Analysiere das System und gib eine kurze Zusammenfassung der wichtigsten Punkte, Probleme und Empfehlungen.",
             []
         )
-        # Nutze ein verfügbares schnelles Modell für die Initialanalyse
-        result = query_ollama(initial_analysis_prompt, model=None, complex_analysis=False)
+        # Nutze das schnellste verfügbare Modell für die Initialanalyse
+        result = query_ollama(initial_analysis_prompt, model=select_best_model(complex_analysis=False, for_menu=False), complex_analysis=False)
         initial_analysis_result['result'] = result
         initial_analysis_result['done'] = True
 
@@ -1240,9 +1256,9 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
             # Erstelle Chat-Prompt
             prompt = create_chat_prompt(system_context, user_input, chat_history)
 
-            # Shortcut-Erkennung: immer schnelles Modell
+            # Shortcut-Erkennung: verwende ultraschnelles Menü-Modell
             if shortcut_used:
-                model = None  # Verwende automatische Modell-Auswahl für schnelle Analysen
+                model = select_best_model(complex_analysis=False, for_menu=True)
             else:
                 # Bestimme Modell-Komplexität für freie Fragen
                 complex_analysis = any(keyword in user_input.lower() for keyword in [
@@ -1623,14 +1639,29 @@ def get_available_models() -> List[Dict[str, Any]]:
     return []
 
 
-def select_best_model(complex_analysis: bool = False) -> str:
-    """Wähle das schnellste verfügbare Modell für System-Analyse aus."""
+def select_best_model(complex_analysis: bool = False, for_menu: bool = False) -> str:
+    """Wähle das beste verfügbare Modell für System-Analyse aus."""
     models = get_available_models()
     
     if not models:
         console.print("[yellow]⚠️  Keine Ollama-Modelle gefunden[/yellow]")
         console.print("[blue]💡 Empfohlene Installation: ollama pull llama3.2:3b[/blue]")
         return "llama2"  # Fallback auf Standard-Modell
+    
+    # Für Menü/Shortcuts: Verwende qwen:0.5b wenn verfügbar
+    if for_menu:
+        for model in models:
+            if "qwen" in model['name'].lower() and "0.5b" in model['name']:
+                console.print(f"[green]⚡ Verwende ultraschnelles Menü-Modell: {model['name']}[/green]")
+                return model['name']
+        
+        # Fallback: Verwende das kleinste verfügbare Modell für Menü
+        sorted_models = sorted(models, key=lambda x: x.get('size', float('inf')))
+        selected_model = sorted_models[0]
+        console.print(f"[yellow]⚠️  Verwende schnellstes verfügbares Modell für Menü: {selected_model['name']}[/yellow]")
+        console.print("[blue]💡 Für ultraschnelle Menü-Erkennung empfehle ich:[/blue]")
+        console.print("[dim]   ollama pull qwen:0.5b[/dim]")
+        return selected_model['name']
     
     # Sortiere Modelle nach Größe (kleinste = schnellste zuerst)
     sorted_models = sorted(models, key=lambda x: x.get('size', float('inf')))
