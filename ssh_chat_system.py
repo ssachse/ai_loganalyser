@@ -2387,7 +2387,7 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
             'cache_key': 'system_report'
         },
         'network-security': {
-            'question': 'Führe eine vollständige Netzwerk-Sicherheitsanalyse durch',
+            'question': 'Führe eine vollständige Netzwerk-Sicherheitsanalyse durch. Fokussiere dich ausschließlich auf Netzwerk-spezifische Themen wie lauschende Services, externe Erreichbarkeit, Firewall-Konfiguration, exponierte Ports und Netzwerk-Sicherheitsrisiken. Ignoriere andere Systemprobleme wie offline Nodes oder nicht-Netzwerk-bezogene Fehler.',
             'complex': True,
             'cache_key': 'network_security'
         },
@@ -2867,8 +2867,8 @@ Zusammenfassung:"""
                                 'security_assessment': security_assessment
                             })
                             
-                            # Aktualisiere Systemkontext
-                            system_context = create_system_context(system_info, log_entries, anomalies)
+                            # Aktualisiere Systemkontext mit Netzwerk-Fokus
+                            system_context = create_system_context(system_info, log_entries, anomalies, focus_network_security=True)
                             
                             console.print(f"[green]✅ Netzwerk-Sicherheitsanalyse abgeschlossen[/green]")
                             
@@ -2923,7 +2923,7 @@ Zusammenfassung:"""
                             'external_tests': external_tests
                         })
                         
-                        system_context = create_system_context(system_info, log_entries, anomalies)
+                        system_context = create_system_context(system_info, log_entries, anomalies, focus_network_security=True)
                         
                         exposed_count = len(external_tests.get('reachable_ports', []))
                         console.print(f"[green]✅ Exponierte Services identifiziert: {exposed_count} Services erreichbar[/green]")
@@ -3115,7 +3115,7 @@ Zusammenfassung:"""
             continue
 
 
-def create_system_context(system_info: Dict[str, Any], log_entries: List[LogEntry], anomalies: List[Anomaly]) -> str:
+def create_system_context(system_info: Dict[str, Any], log_entries: List[LogEntry], anomalies: List[Anomaly], focus_network_security: bool = False) -> str:
     """Erstellt einen strukturierten System-Kontext für Ollama"""
     context_parts = []
     
@@ -3125,96 +3125,101 @@ def create_system_context(system_info: Dict[str, Any], log_entries: List[LogEntr
     context_parts.append(f"Distribution: {system_info.get('distro_pretty_name', system_info.get('distro_name', 'Unbekannt'))}")
     context_parts.append(f"Kernel: {system_info.get('kernel_version', 'Unbekannt')}")
     context_parts.append(f"Architektur: {system_info.get('architecture', 'Unbekannt')}")
-    context_parts.append(f"CPU: {system_info.get('cpu_info', 'Unbekannt')}")
-    context_parts.append(f"CPU-Kerne: {system_info.get('cpu_cores', 'Unbekannt')}")
-    context_parts.append(f"RAM: {system_info.get('memory_total', 'Unbekannt')}")
-    context_parts.append(f"Uptime: {system_info.get('uptime', 'Unbekannt')}")
-    context_parts.append(f"Zeitzone: {system_info.get('timezone', 'Unbekannt')}")
     
-    # Speicherplatz
-    if 'root_usage_percent' in system_info:
-        context_parts.append(f"Speicherplatz Root: {system_info.get('root_total', 'N/A')} gesamt, {system_info.get('root_used', 'N/A')} verwendet, {system_info.get('root_available', 'N/A')} verfügbar ({system_info.get('root_usage_percent', 'N/A')} Auslastung)")
+    # Bei Netzwerk-Sicherheitsanalyse nur relevante Basis-Informationen
+    if not focus_network_security:
+        context_parts.append(f"CPU: {system_info.get('cpu_info', 'Unbekannt')}")
+        context_parts.append(f"CPU-Kerne: {system_info.get('cpu_cores', 'Unbekannt')}")
+        context_parts.append(f"RAM: {system_info.get('memory_total', 'Unbekannt')}")
+        context_parts.append(f"Uptime: {system_info.get('uptime', 'Unbekannt')}")
+        context_parts.append(f"Zeitzone: {system_info.get('timezone', 'Unbekannt')}")
     
-    # Speicherplatz-Details
-    if 'largest_directories' in system_info:
-        context_parts.append("\n=== SPEICHERPLATZ-VERWENDUNG ===")
-        dir_mapping = {
-            'home_usage': '/home',
-            'var_usage': '/var',
-            'tmp_usage': '/tmp',
-            'log_usage': '/var/log',
-            'docker_usage': '/var/lib/docker',
-            'apt_usage': '/var/cache/apt'
-        }
-        for key, path in dir_mapping.items():
-            if key in system_info and system_info[key]:
-                context_parts.append(f"{path}: {system_info[key]}")
-    
-    # Größte Dateien
-    if 'largest_files' in system_info:
-        context_parts.append("\n=== GRÖSSTE DATEIEN ===")
-        if system_info['largest_files']:
-            lines = system_info['largest_files'].split('\n')[:10]
-            for line in lines:
-                if line.strip():
-                    context_parts.append(line.strip())
-    
-    # Größte Dateien nach Verzeichnissen
-    if 'largest_files_by_directory' in system_info:
-        context_parts.append("\n=== GRÖSSTE DATEIEN NACH VERZEICHNISSEN ===")
-        for directory, files in system_info['largest_files_by_directory'].items():
-            if files:
-                context_parts.append(f"\n{directory}:")
-                lines = files.split('\n')[:5]
+    # Speicherplatz (nur bei nicht-Netzwerk-Analysen)
+    if not focus_network_security:
+        if 'root_usage_percent' in system_info:
+            context_parts.append(f"Speicherplatz Root: {system_info.get('root_total', 'N/A')} gesamt, {system_info.get('root_used', 'N/A')} verwendet, {system_info.get('root_available', 'N/A')} verfügbar ({system_info.get('root_usage_percent', 'N/A')} Auslastung)")
+        
+        # Speicherplatz-Details
+        if 'largest_directories' in system_info:
+            context_parts.append("\n=== SPEICHERPLATZ-VERWENDUNG ===")
+            dir_mapping = {
+                'home_usage': '/home',
+                'var_usage': '/var',
+                'tmp_usage': '/tmp',
+                'log_usage': '/var/log',
+                'docker_usage': '/var/lib/docker',
+                'apt_usage': '/var/cache/apt'
+            }
+            for key, path in dir_mapping.items():
+                if key in system_info and system_info[key]:
+                    context_parts.append(f"{path}: {system_info[key]}")
+        
+        # Größte Dateien
+        if 'largest_files' in system_info:
+            context_parts.append("\n=== GRÖSSTE DATEIEN ===")
+            if system_info['largest_files']:
+                lines = system_info['largest_files'].split('\n')[:10]
                 for line in lines:
                     if line.strip():
-                        context_parts.append(f"  {line.strip()}")
-    
-    # Services
-    if 'important_services_status' in system_info:
-        context_parts.append("\n=== AKTIVE SERVICES ===")
-        services = system_info['important_services_status']
-        for service, status in services.items():
-            context_parts.append(f"{service}: {status}")
-    
-    # Anmeldungen
-    if 'current_users' in system_info or 'user_login_stats' in system_info:
-        context_parts.append("\n=== ANMELDUNGS-STATISTIKEN ===")
-        if 'current_users' in system_info and system_info['current_users']:
-            context_parts.append(f"Aktuell eingeloggt: {system_info['current_users']}")
-        if 'user_login_stats' in system_info and system_info['user_login_stats']:
-            context_parts.append("Anmeldungen der letzten 7 Tage:")
-            context_parts.append(system_info['user_login_stats'])
-        if 'failed_logins_by_user' in system_info and system_info['failed_logins_by_user']:
-            context_parts.append("Fehlgeschlagene Anmeldungen:")
-            context_parts.append(system_info['failed_logins_by_user'])
-    
-    # Performance
-    if 'cpu_usage_percent' in system_info or 'memory_usage_percent' in system_info:
-        context_parts.append("\n=== PERFORMANCE ===")
-        if 'cpu_usage_percent' in system_info:
-            context_parts.append(f"CPU-Auslastung: {system_info['cpu_usage_percent']}%")
-        if 'memory_usage_percent' in system_info:
-            context_parts.append(f"Memory-Auslastung: {system_info['memory_usage_percent']}%")
-        if 'load_average_1min' in system_info:
-            context_parts.append(f"Load Average (1min): {system_info['load_average_1min']}")
-    
-    # Paket-Management
-    if 'package_manager' in system_info:
-        context_parts.append(f"\nPaket-Manager: {system_info['package_manager']}")
-        context_parts.append(f"Installierte Pakete: {system_info.get('installed_packages_count', 'Unbekannt')}")
-        context_parts.append(f"Verfügbare Updates: {system_info.get('available_updates', 'Unbekannt')}")
-    
-    # Kubernetes-Cluster
-    if 'kubernetes_detected' in system_info and system_info['kubernetes_detected']:
-        context_parts.append("\n=== KUBERNETES-CLUSTER ===")
+                        context_parts.append(line.strip())
         
-        if 'cluster_info' in system_info:
-            context_parts.append("Cluster-Info:")
-            context_parts.append(system_info['cluster_info'])
+        # Größte Dateien nach Verzeichnissen
+        if 'largest_files_by_directory' in system_info:
+            context_parts.append("\n=== GRÖSSTE DATEIEN NACH VERZEICHNISSEN ===")
+            for directory, files in system_info['largest_files_by_directory'].items():
+                if files:
+                    context_parts.append(f"\n{directory}:")
+                    lines = files.split('\n')[:5]
+                    for line in lines:
+                        if line.strip():
+                            context_parts.append(f"  {line.strip()}")
+    
+    # Services (nur bei nicht-Netzwerk-Analysen)
+    if not focus_network_security:
+        if 'important_services_status' in system_info:
+            context_parts.append("\n=== AKTIVE SERVICES ===")
+            services = system_info['important_services_status']
+            for service, status in services.items():
+                context_parts.append(f"{service}: {status}")
         
-        if 'k8s_version' in system_info:
-            context_parts.append(f"Version: {system_info['k8s_version']}")
+        # Anmeldungen
+        if 'current_users' in system_info or 'user_login_stats' in system_info:
+            context_parts.append("\n=== ANMELDUNGS-STATISTIKEN ===")
+            if 'current_users' in system_info and system_info['current_users']:
+                context_parts.append(f"Aktuell eingeloggt: {system_info['current_users']}")
+            if 'user_login_stats' in system_info and system_info['user_login_stats']:
+                context_parts.append("Anmeldungen der letzten 7 Tage:")
+                context_parts.append(system_info['user_login_stats'])
+            if 'failed_logins_by_user' in system_info and system_info['failed_logins_by_user']:
+                context_parts.append("Fehlgeschlagene Anmeldungen:")
+                context_parts.append(system_info['failed_logins_by_user'])
+        
+        # Performance
+        if 'cpu_usage_percent' in system_info or 'memory_usage_percent' in system_info:
+            context_parts.append("\n=== PERFORMANCE ===")
+            if 'cpu_usage_percent' in system_info:
+                context_parts.append(f"CPU-Auslastung: {system_info['cpu_usage_percent']}%")
+            if 'memory_usage_percent' in system_info:
+                context_parts.append(f"Memory-Auslastung: {system_info['memory_usage_percent']}%")
+            if 'load_average_1min' in system_info:
+                context_parts.append(f"Load Average (1min): {system_info['load_average_1min']}")
+        
+        # Paket-Management
+        if 'package_manager' in system_info:
+            context_parts.append(f"\nPaket-Manager: {system_info['package_manager']}")
+            context_parts.append(f"Installierte Pakete: {system_info.get('installed_packages_count', 'Unbekannt')}")
+            context_parts.append(f"Verfügbare Updates: {system_info.get('available_updates', 'Unbekannt')}")
+        
+        # Kubernetes-Cluster
+        if 'kubernetes_detected' in system_info and system_info['kubernetes_detected']:
+            context_parts.append("\n=== KUBERNETES-CLUSTER ===")
+            
+            if 'cluster_info' in system_info:
+                context_parts.append("Cluster-Info:")
+                context_parts.append(system_info['cluster_info'])
+            
+            if 'k8s_version' in system_info:
+                context_parts.append(f"Version: {system_info['k8s_version']}")
         
         if 'node_status' in system_info:
             context_parts.append("Node-Status:")
@@ -3787,6 +3792,12 @@ def create_chat_prompt(system_context: str, user_question: str, chat_history: Li
             prompt_parts.append("- Analysiere die Sicherheits-Informationen")
             prompt_parts.append("- Identifiziere Sicherheitsprobleme")
             prompt_parts.append("- Gib Sicherheits-Empfehlungen")
+        elif any(keyword in question_lower for keyword in ['netzwerk', 'network', 'network-security']):
+            prompt_parts.append("- FOKUSSIERE DICH AUSSCHLIESSLICH auf Netzwerk-spezifische Themen")
+            prompt_parts.append("- Analysiere nur lauschende Services, externe Erreichbarkeit, Firewall-Konfiguration")
+            prompt_parts.append("- Ignoriere andere Systemprobleme wie offline Nodes oder nicht-Netzwerk-bezogene Fehler")
+            prompt_parts.append("- Konzentriere dich auf exponierte Ports und Netzwerk-Sicherheitsrisiken")
+            prompt_parts.append("- Gib nur Netzwerk-spezifische Sicherheitsempfehlungen")
         else:
             prompt_parts.append("- Identifiziere automatisch Engpässe, Sicherheitslücken und Unregelmäßigkeiten")
             prompt_parts.append("- Warnung bei kritischen Problemen (hohe CPU/Last, wenig Speicher, Sicherheitsprobleme)")
