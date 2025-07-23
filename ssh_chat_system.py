@@ -1195,11 +1195,18 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
 
     def run_initial_analysis():
         # Vereinfachter Prompt für Initialanalyse
-        simple_prompt = f"""Du bist ein System-Administrator. Analysiere diese System-Daten und gib eine kurze Zusammenfassung in 2-3 Sätzen auf Deutsch:
+        simple_prompt = f"""Du bist ein System-Administrator. Analysiere diese System-Daten und gib eine kurze Zusammenfassung in 2-3 Sätzen auf Deutsch.
 
+WICHTIGE REGELN:
+- Antworte NUR auf Deutsch
+- Verwende nur lateinische Zeichen (keine chinesischen, arabischen, etc.)
+- Gib eine kurze, präzise Zusammenfassung
+- Keine Code-Snippets oder technische Details
+
+System-Daten:
 {system_context}
 
-Antworte nur mit der Zusammenfassung, keine weiteren Erklärungen."""
+Zusammenfassung:"""
         
         # Nutze das schnellste verfügbare Modell für die Initialanalyse
         result = query_ollama(simple_prompt, model=select_best_model(complex_analysis=False, for_menu=False), complex_analysis=False)
@@ -1672,10 +1679,9 @@ def create_chat_prompt(system_context: str, user_question: str, chat_history: Li
         prompt_parts.append("- Antworte IMMER auf Deutsch")
         prompt_parts.append("- Analysiere die System-Daten und gib konkrete Antworten")
         prompt_parts.append("- Wenn keine relevanten Daten vorhanden sind, sage das ehrlich")
-        prompt_parts.append("- WICHTIG: Antworte NUR auf Deutsch, niemals auf Englisch")
-        prompt_parts.append("- Verwende deutsche Begriffe und Ausdrücke")
-        prompt_parts.append("- SPRACHE: Du MUSST auf Deutsch antworten, keine englischen Wörter verwenden")
-        prompt_parts.append("- BEISPIEL: 'Speicherplatz' statt 'storage', 'Benutzer' statt 'users'")
+        prompt_parts.append("- WICHTIG: Antworte NUR auf Deutsch")
+        prompt_parts.append("- Verwende deutsche Begriffe")
+        prompt_parts.append("- Keine englischen Wörter verwenden")
         
         # Spezifische Prompts je nach Fragetyp
         question_lower = user_question.lower()
@@ -2010,6 +2016,8 @@ Antwort:"""
         if response:
             # Bereinige Antwort
             response = response.strip().lower()
+            # Ersetze Unterstriche durch Bindestriche für Proxmox-Shortcuts
+            response = response.replace('_', '-')
             if response in shortcuts:
                 # Cache das Ergebnis
                 _interpolation_cache[user_input] = response
