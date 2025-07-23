@@ -2,6 +2,12 @@
 
 Ein intelligenter SSH-basierter Linux-Log-Analyzer mit integriertem Ollama-Chat und Kubernetes-Cluster-Analyse.
 
+## 🌍 **Mehrsprachige Unterstützung**
+- **Automatische Spracherkennung**: Erkennt Sprache aus Shell-Locale
+- **Unterstützte Sprachen**: Deutsch (Standard) und Englisch
+- **Dynamische Übersetzung**: Alle UI-Texte und Meldungen übersetzt
+- **Einfache Erweiterung**: Neue Sprachen leicht hinzufügbar
+
 ## 🚀 Features
 
 ### 🔍 **Umfassende System-Analyse**

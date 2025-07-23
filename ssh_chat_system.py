@@ -23,6 +23,7 @@ from rich.prompt import Prompt, Confirm
 # Importiere den bestehenden Log-Analyzer
 from log_analyzer import LogAnalyzer, LogEntry, LogLevel, Anomaly
 from config import Config
+from i18n import _, i18n
 
 console = Console()
 
@@ -58,7 +59,7 @@ class SSHLogCollector:
     def connect(self) -> bool:
         """Testet die SSH-Verbindung"""
         try:
-            console.print(f"[blue]Teste SSH-Verbindung zu {self.ssh_connection_string}...[/blue]")
+            console.print(f"[blue]{_('ssh_connecting')} {self.ssh_connection_string}...[/blue]")
             
             # Teste SSH-Verbindung
             test_cmd = ['ssh', '-o', 'ConnectTimeout=10', '-o', 'BatchMode=yes', 
@@ -72,17 +73,17 @@ class SSHLogCollector:
             result = subprocess.run(test_cmd, capture_output=True, text=True, timeout=15)
             
             if result.returncode == 0:
-                console.print(f"[green]✅ SSH-Verbindung zu {self.host} erfolgreich[/green]")
+                console.print(f"[green]✅ {_('ssh_success')} {self.host}[/green]")
                 return True
             else:
-                console.print(f"[red]❌ SSH-Verbindung fehlgeschlagen: {result.stderr.strip()}[/red]")
+                console.print(f"[red]❌ {_('ssh_failed')}: {result.stderr.strip()}[/red]")
                 return False
                 
         except subprocess.TimeoutExpired:
-            console.print("[red]❌ SSH-Verbindung Timeout[/red]")
+            console.print(f"[red]❌ {_('ssh_timeout')}[/red]")
             return False
         except Exception as e:
-            console.print(f"[red]❌ SSH-Fehler: {e}[/red]")
+            console.print(f"[red]❌ {_('ssh_error')}: {e}[/red]")
             return False
     
     def execute_remote_command(self, command: str) -> Optional[str]:
@@ -184,11 +185,11 @@ class SSHLogCollector:
         if total_errors == 0:
             return
         
-        console.print(f"\n[bold yellow]⚠️  Fehler-Zusammenfassung ({total_errors} Fehler):[/bold yellow]")
+        console.print(f"\n[bold yellow]⚠️  {_('error_summary')} ({total_errors} Fehler):[/bold yellow]")
         
         # Permission denied Fehler
         if self.error_patterns['permission_denied']:
-            console.print(f"\n[red]🔒 Fehlende Rechte ({len(self.error_patterns['permission_denied'])} Fehler):[/red]")
+            console.print(f"\n[red]🔒 {_('error_permission_denied')} ({len(self.error_patterns['permission_denied'])} Fehler):[/red]")
             console.print("   Weitere Analyse aufgrund fehlender Rechte nicht möglich.")
             console.print("   Betroffene Bereiche:")
             for error in self.error_patterns['permission_denied']:
@@ -862,110 +863,110 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
     # Kürzelwörter für häufige Fragen mit Modell-Komplexität
     shortcuts = {
         'services': {
-            'question': 'Welche Services laufen auf dem System?',
+            'question': _('shortcut_services'),
             'complex': False,
             'cache_key': 'services_status'
         },
         'storage': {
-            'question': 'Wie ist der Speicherplatz?',
+            'question': _('shortcut_storage'),
             'complex': False,
             'cache_key': 'storage_status'
         },
         'security': {
-            'question': 'Gibt es Sicherheitsprobleme?',
+            'question': _('shortcut_security'),
             'complex': True,
             'cache_key': 'security_analysis'
         },
         'processes': {
-            'question': 'Was sind die Top-Prozesse?',
+            'question': _('shortcut_processes'),
             'complex': False,
             'cache_key': 'top_processes'
         },
         'performance': {
-            'question': 'Wie ist die System-Performance?',
+            'question': _('shortcut_performance'),
             'complex': False,
             'cache_key': 'performance_status'
         },
         'users': {
-            'question': 'Welche Benutzer sind aktiv?',
+            'question': _('shortcut_users'),
             'complex': False,
             'cache_key': 'active_users'
         },
         'updates': {
-            'question': 'Gibt es verfügbare System-Updates?',
+            'question': _('shortcut_updates'),
             'complex': False,
             'cache_key': 'system_updates'
         },
         'logs': {
-            'question': 'Was zeigen die Logs?',
+            'question': _('shortcut_logs'),
             'complex': True,
             'cache_key': 'log_analysis'
         },
         'k8s': {
-            'question': 'Wie ist der Kubernetes-Cluster-Status?',
+            'question': _('shortcut_k8s'),
             'complex': False,
             'cache_key': 'k8s_status'
         },
         'k8s-problems': {
-            'question': 'Welche Kubernetes-Probleme gibt es?',
+            'question': _('shortcut_k8s_problems'),
             'complex': True,
             'cache_key': 'k8s_problems'
         },
         'k8s-pods': {
-            'question': 'Welche Pods laufen im Cluster?',
+            'question': _('shortcut_k8s_pods'),
             'complex': False,
             'cache_key': 'k8s_pods'
         },
         'k8s-nodes': {
-            'question': 'Wie ist der Node-Status?',
+            'question': _('shortcut_k8s_nodes'),
             'complex': False,
             'cache_key': 'k8s_nodes'
         },
         'k8s-resources': {
-            'question': 'Wie ist die Ressourcen-Auslastung im Cluster?',
+            'question': _('shortcut_k8s_resources'),
             'complex': False,
             'cache_key': 'k8s_resources'
         },
         'help': {
-            'question': 'Zeige verfügbare Kürzelwörter',
+            'question': _('shortcut_help'),
             'complex': False,
             'cache_key': None
         },
         'm': {
-            'question': 'Zeige verfügbare Kürzelwörter',
+            'question': _('shortcut_help'),
             'complex': False,
             'cache_key': None
         }
     }
     
-    console.print("\n[bold blue]💬 Interaktiver Chat mit Ollama[/bold blue]")
+    console.print(f"\n[bold blue]💬 {_('chat_title')}[/bold blue]")
     console.print("="*60)
-    console.print("Sie können jetzt weitere Fragen über das analysierte System stellen.")
-    console.print("\n[bold cyan]Kürzelwörter für häufige Fragen:[/bold cyan]")
-    console.print("  • 'services' - Welche Services laufen auf dem System?")
-    console.print("  • 'storage' - Wie ist der Speicherplatz?")
-    console.print("  • 'security' - Gibt es Sicherheitsprobleme?")
-    console.print("  • 'processes' - Was sind die Top-Prozesse?")
-    console.print("  • 'performance' - Wie ist die System-Performance?")
-    console.print("  • 'users' - Welche Benutzer sind aktiv?")
-    console.print("  • 'updates' - Gibt es verfügbare System-Updates?")
-    console.print("  • 'logs' - Was zeigen die Logs?")
+    console.print(_('chat_prompt'))
+    console.print(f"\n[bold cyan]{_('chat_shortcuts')}[/bold cyan]")
+    console.print(f"  • 'services' - {_('shortcut_services')}")
+    console.print(f"  • 'storage' - {_('shortcut_storage')}")
+    console.print(f"  • 'security' - {_('shortcut_security')}")
+    console.print(f"  • 'processes' - {_('shortcut_processes')}")
+    console.print(f"  • 'performance' - {_('shortcut_performance')}")
+    console.print(f"  • 'users' - {_('shortcut_users')}")
+    console.print(f"  • 'updates' - {_('shortcut_updates')}")
+    console.print(f"  • 'logs' - {_('shortcut_logs')}")
     
     # Kubernetes-Kürzel nur anzeigen, wenn Kubernetes verfügbar ist
     if 'kubernetes_detected' in system_info and system_info['kubernetes_detected']:
-        console.print("  • 'k8s' - Wie ist der Kubernetes-Cluster-Status?")
-        console.print("  • 'k8s-problems' - Welche Kubernetes-Probleme gibt es?")
-        console.print("  • 'k8s-pods' - Welche Pods laufen im Cluster?")
-        console.print("  • 'k8s-nodes' - Wie ist der Node-Status?")
-        console.print("  • 'k8s-resources' - Wie ist die Ressourcen-Auslastung im Cluster?")
+        console.print(f"  • 'k8s' - {_('shortcut_k8s')}")
+        console.print(f"  • 'k8s-problems' - {_('shortcut_k8s_problems')}")
+        console.print(f"  • 'k8s-pods' - {_('shortcut_k8s_pods')}")
+        console.print(f"  • 'k8s-nodes' - {_('shortcut_k8s_nodes')}")
+        console.print(f"  • 'k8s-resources' - {_('shortcut_k8s_resources')}")
     
-    console.print("  • 'help' oder 'm' - Zeige verfügbare Kürzelwörter")
-    console.print("  • 'exit', 'quit', 'q', 'bye', 'beenden' zum Verlassen")
+    console.print(f"  • 'help' oder 'm' - {_('shortcut_help')}")
+    console.print(f"  • 'exit', 'quit', 'q', 'bye', 'beenden' {_('chat_exit_commands')}")
     console.print("="*60)
-    console.print("\n[dim]💡 Tipp: ['q' to quit, 'm' -> Menü][/dim]")
+    console.print(f"\n[dim]💡 {_('chat_tip')}: ['q' to quit, 'm' -> Menü][/dim]")
     
     # Automatische System-Analyse beim Start
-    console.print("\n[dim]🤖 Führe automatische System-Analyse durch...[/dim]")
+    console.print(f"\n[dim]🤖 {_('analysis_running')}[/dim]")
     initial_analysis_prompt = create_chat_prompt(
         system_context, 
         "Analysiere das System und gib eine kurze Zusammenfassung der wichtigsten Punkte, Probleme und Empfehlungen.",
@@ -974,17 +975,17 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
     initial_analysis = query_ollama(initial_analysis_prompt, complex_analysis=True)
     
     if initial_analysis:
-        console.print(f"\n[bold green]🤖 System-Analyse:[/bold green]")
+        console.print(f"\n[bold green]🤖 {_('analysis_summary')}[/bold green]")
         console.print(initial_analysis)
     
     # Chat-Loop
     while True:
         try:
-            user_input = console.input("\n[bold cyan]Sie:[/bold cyan] ").strip()
+            user_input = console.input(f"\n[bold cyan]{_('chat_you')}:[/bold cyan] ").strip()
             
             # Prüfe auf Exit-Befehle
             if user_input.lower() in ['exit', 'quit', 'q', 'bye', 'beenden', 'tschüss', 'ciao']:
-                console.print("\n[green]👋 Auf Wiedersehen! Danke für die Nutzung des Log-Analyzers.[/green]")
+                console.print(f"\n[green]👋 {_('chat_goodbye')}[/green]")
                 break
             
             # Prüfe auf Kürzelwörter
@@ -1000,8 +1001,8 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
                 
                 # Prüfe Cache für Kürzelwörter
                 if cache_key and cache_key in response_cache:
-                    console.print(f"[dim]📋 Verwende gecachte Antwort für '{user_input}'[/dim]")
-                    console.print(f"\n[bold green]🤖 Ollama:[/bold green]")
+                    console.print(f"[dim]📋 {_('chat_using_cached')} '{user_input}'[/dim]")
+                    console.print(f"\n[bold green]🤖 {_('chat_ollama')}:[/bold green]")
                     console.print(response_cache[cache_key])
                     
                     # Füge zur Chat-Historie hinzu
@@ -1011,7 +1012,7 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
             
             # Hilfe anzeigen
             if user_input.lower() in ['help', 'm']:
-                console.print("\n[bold cyan]Verfügbare Kürzelwörter:[/bold cyan]")
+                console.print(f"\n[bold cyan]{_('menu_available_shortcuts')}[/bold cyan]")
                 for shortcut, info in shortcuts.items():
                     if shortcut not in ['help', 'm']:
                         console.print(f"  • '{shortcut}' - {info['question']}")
@@ -1034,23 +1035,23 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
             # Zeige Modell-Auswahl
             model = select_best_model(complex_analysis)
             if shortcut_used:
-                model_type = "schnelles" if not complex_analysis else "komplexes"
-                console.print(f"[dim]⚡ Verwende {model_type} Modell: {model}[/dim]")
+                model_type = _('chat_using_fast_model') if not complex_analysis else _('chat_using_complex_model')
+                console.print(f"[dim]⚡ {model_type}: {model}[/dim]")
             else:
-                console.print(f"[dim]🤖 Verwende Modell: {model}[/dim]")
+                console.print(f"[dim]🤖 {_('chat_using_model')} {model}[/dim]")
             
             # Sende an Ollama
-            console.print("[dim]🤔 Denke nach...[/dim]")
+            console.print(f"[dim]🤔 {_('chat_thinking')}[/dim]")
             response = query_ollama(prompt, model=model, complex_analysis=complex_analysis)
             
             if response:
-                console.print(f"\n[bold green]🤖 Ollama:[/bold green]")
+                console.print(f"\n[bold green]🤖 {_('chat_ollama')}:[/bold green]")
                 console.print(response)
                 
                 # Cache die Antwort für Kürzelwörter
                 if shortcut_used and cache_key:
                     response_cache[cache_key] = response
-                    console.print(f"[dim]📋 Antwort für '{user_input}' gecacht[/dim]")
+                    console.print(f"[dim]📋 {_('chat_cached')} '{user_input}'[/dim]")
                 
                 # Füge zur Chat-Historie hinzu
                 chat_history.append({"role": "user", "content": user_input})
@@ -1060,10 +1061,10 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
                 if len(chat_history) > 10:
                     chat_history = chat_history[-10:]
             else:
-                console.print("[red]❌ Keine Antwort von Ollama erhalten[/red]")
+                console.print(f"[red]❌ {_('chat_no_response')}[/red]")
                 
         except KeyboardInterrupt:
-            console.print("\n[green]👋 Auf Wiedersehen! Danke für die Nutzung des Log-Analyzers.[/green]")
+            console.print(f"\n[green]👋 {_('chat_goodbye')}[/green]")
             break
         except Exception as e:
             console.print(f"[red]❌ Fehler im Chat: {e}[/red]")
