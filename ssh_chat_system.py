@@ -2673,9 +2673,13 @@ Zusammenfassung:"""
                         # Cache leeren für Container-bezogene Fragen
                         clear_context_cache('proxmox')
                         
+                        # Führe normale Chat-Analyse mit aktualisiertem Kontext durch
+                        continue
+                        
                     else:
                         error_msg = detailed_containers.get("error", "Unbekannter Fehler") if detailed_containers else "Keine Daten erhalten"
                         console.print(f"[red]❌ Fehler beim Sammeln der Container-Informationen: {error_msg}[/red]")
+                        continue
                 
                 # Spezielle Behandlung für Netzwerk-Sicherheitsanalyse
                 if interpolated_shortcut and interpolated_shortcut == 'network-security':
@@ -2732,10 +2736,15 @@ Zusammenfassung:"""
                             
                             # Cache leeren für Sicherheits-bezogene Fragen
                             clear_context_cache('security')
+                            
+                            # Führe normale Chat-Analyse mit aktualisiertem Kontext durch
+                            continue
                         else:
                             console.print(f"[yellow]⚠️ Keine lauschenden Ports gefunden[/yellow]")
+                            continue
                     else:
                         console.print(f"[yellow]⚠️ Keine externe IP-Adresse gefunden[/yellow]")
+                        continue
                 
                 # Spezielle Behandlung für exponierte Services
                 elif interpolated_shortcut and interpolated_shortcut == 'exposed-services':
@@ -2775,6 +2784,9 @@ Zusammenfassung:"""
                         console.print(f"[green]✅ Exponierte Services identifiziert: {exposed_count} Services erreichbar[/green]")
                         
                         clear_context_cache('security')
+                        
+                        # Führe normale Chat-Analyse mit aktualisiertem Kontext durch
+                        continue
                 
                 # Spezielle Behandlung für Systembericht
                 if original_input == 'report' or (interpolated_shortcut and interpolated_shortcut == 'report'):
