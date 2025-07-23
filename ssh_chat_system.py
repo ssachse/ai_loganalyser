@@ -1230,7 +1230,13 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
                 shortcut_used = True
 
                 console.print(f"[dim]Verwende: {user_input}[/dim]")
-
+                
+                # Zeige Modell-Wechsel für Shortcuts
+                if shortcut_info['complex']:
+                    console.print(f"[dim]🔄 Wechsle zu komplexem Modell für detaillierte Analyse...[/dim]")
+                else:
+                    console.print(f"[dim]🔄 Wechsle zu Standard-Modell für Analyse...[/dim]")
+                
                 # Prüfe Cache für Kürzelwörter
                 if cache_key and cache_key in response_cache:
                     console.print(f"[dim]📋 {_('chat_using_cached')} '{user_input}'[/dim]")
@@ -1256,9 +1262,21 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
             # Erstelle Chat-Prompt
             prompt = create_chat_prompt(system_context, user_input, chat_history)
 
-            # Shortcut-Erkennung: verwende ultraschnelles Menü-Modell
+            # Modell-Auswahl basierend auf Eingabe-Typ
             if shortcut_used:
-                model = select_best_model(complex_analysis=False, for_menu=True)
+                # Für Shortcut-Erkennung: ultraschnelles Menü-Modell
+                menu_model = select_best_model(complex_analysis=False, for_menu=True)
+                console.print(f"[dim]⚡ Menü-Erkennung mit: {menu_model}[/dim]")
+                
+                # Für die eigentliche Analyse nach Shortcut: besseres Modell
+                if shortcut_info['complex']:
+                    analysis_model = select_best_model(complex_analysis=True, for_menu=False)
+                    console.print(f"[dim]🔍 Komplexe Analyse mit: {analysis_model}[/dim]")
+                else:
+                    analysis_model = select_best_model(complex_analysis=False, for_menu=False)
+                    console.print(f"[dim]📊 Standard-Analyse mit: {analysis_model}[/dim]")
+                
+                model = analysis_model  # Verwende das bessere Modell für die Analyse
             else:
                 # Bestimme Modell-Komplexität für freie Fragen
                 complex_analysis = any(keyword in user_input.lower() for keyword in [
@@ -1269,11 +1287,15 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
                 model = select_best_model(complex_analysis)
 
             if shortcut_used:
-                model_type = _('chat_using_fast_model')
-                console.print(f"[dim]⚡ {model_type}: {model}[/dim]")
+                if shortcut_info['complex']:
+                    model_type = _('chat_using_complex_model')
+                    console.print(f"[dim]🔍 {model_type}: {model}[/dim]")
+                else:
+                    model_type = _('chat_using_model')
+                    console.print(f"[dim]📊 {model_type}: {model}[/dim]")
             else:
                 model_type = _('chat_using_model') if not complex_analysis else _('chat_using_complex_model')
-                console.print(f"[dim]🤖 {model_type} {model}[/dim]")
+                console.print(f"[dim]🤖 {model_type}: {model}[/dim]")
 
             # Sende an Ollama
             console.print(f"[dim]🤔 {_('chat_thinking')}[/dim]")
