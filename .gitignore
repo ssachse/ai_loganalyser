@@ -48,4 +48,7 @@ Thumbs.db
 *.key
 
 # System reports (generated automatically)
-system_reports/ 
+system_reports/
+
+# Network security analysis results (temporary)
+network_security_analysis_*.json 

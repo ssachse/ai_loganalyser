@@ -305,8 +305,9 @@ def test_network_security_detailed(host: str, username: str, key_file: str = Non
         
         console.print(stats_table)
         
-        # Speichere Ergebnisse
-        output_file = f"network_security_analysis_{host}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        # Speichere Ergebnisse im system_reports Ordner
+        os.makedirs('system_reports', exist_ok=True)
+        output_file = f"system_reports/network_security_analysis_{host}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         with open(output_file, 'w') as f:
             json.dump(complete_data, f, indent=2, default=str)
         
