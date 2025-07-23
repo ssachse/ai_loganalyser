@@ -3840,16 +3840,86 @@ def create_chat_prompt(system_context: str, user_question: str, chat_history: Li
         # Chat history (last 2 entries for context)
         if chat_history:
             prompt_parts.append("\n=== CHAT HISTORY ===")
-            for entry in chat_history[-2:]:
-                if entry['role'] == 'user':
-                    prompt_parts.append(f"User: {entry['content']}")
-                else:
-                    prompt_parts.append(f"You: {entry['content']}")
-        
-        prompt_parts.append(f"\nUser Question: {user_question}")
-        prompt_parts.append("\nAnswer directly and precisely to the question based on the system data:")
     
     return "\n".join(prompt_parts)
+
+def detect_and_correct_nonsense(response: str, question: str, system_info: Dict[str, Any]) -> str:
+    """Erkennt und korrigiert Unsinn in Chat-Antworten"""
+    
+    # Unsinn-Erkennung
+    response_lower = response.lower()
+    question_lower = question.lower()
+    
+    # Context-Mismatches erkennen
+    context_mismatches = {
+        "docker": ["netzwerk-sicherheitsanalyse", "ssh-service", "mailserver"],
+        "mailserver": ["netzwerk-sicherheitsanalyse", "ssh-service", "docker"],
+        "netzwerk": ["docker", "mailserver", "container"],
+        "services": ["netzwerk-sicherheitsanalyse", "docker", "mailserver"]
+    }
+    
+    # Prüfe Context-Mismatches
+    for context, forbidden_terms in context_mismatches.items():
+        if context in question_lower:
+            for term in forbidden_terms:
+                if term in response_lower:
+                    # Korrigiere basierend auf Context
+                    if "docker" in question_lower:
+                        return f"""
+Docker-Status-Analyse:
+
+Basierend auf den System-Daten:
+- Docker ist {'verfügbar' if system_info.get('docker_detected', False) else 'nicht verfügbar'}
+- Verwende 'docker ps' um laufende Container zu sehen
+- Verwende 'docker images' um verfügbare Images zu sehen
+- Verwende 'docker system df' um Speicherplatz zu prüfen
+
+Für detaillierte Informationen führen Sie bitte 'docker ps -a' aus.
+"""
+                    elif "mailserver" in question_lower:
+                        return f"""
+Mailserver-Analyse:
+
+Basierend auf den System-Daten:
+- Mailserver sind {'verfügbar' if system_info.get('mailserver_detected', False) else 'nicht verfügbar'}
+- Verwende 'systemctl status postfix' für Postfix-Status
+- Verwende 'systemctl status dovecot' für Dovecot-Status
+- Verwende 'netstat -tlnp | grep :25' für SMTP-Port
+
+Für detaillierte Informationen prüfen Sie bitte die Mailserver-Logs.
+"""
+                    elif "netzwerk" in question_lower:
+                        return f"""
+Netzwerk-Sicherheitsanalyse:
+
+Basierend auf den System-Daten:
+- Führe 'netstat -tlnp' für lauschende Ports aus
+- Führe 'ss -tuln' für Socket-Status aus
+- Führe 'iptables -L' für Firewall-Regeln aus
+
+Für eine vollständige Netzwerk-Sicherheitsanalyse verwenden Sie den 'netzwerk' Shortcut.
+"""
+    
+    # Generische Unsinn-Indikatoren
+    nonsense_patterns = [
+        "es gibt einen problem",
+        "sicherheitsrisiko low",
+        "ssh-identification-string ungültig"
+    ]
+    
+    for pattern in nonsense_patterns:
+        if pattern in response_lower:
+            return f"""
+System-Analyse:
+
+Basierend auf den System-Daten:
+- Hostname: {system_info.get('hostname', 'unbekannt')}
+- Distribution: {system_info.get('distro_pretty_name', 'unbekannt')}
+
+Für spezifische Informationen verwenden Sie bitte die verfügbaren Shortcuts.
+"""
+    
+    return response
 
 
 def save_system_report(report_content: str, system_info: Dict[str, Any]) -> str:

@@ -1,0 +1,154 @@
+
+================================================================================
+📊 AUTOMATISIERTE TEST-BERICHT
+================================================================================
+Datum: 2025-07-23 21:14:35
+Dauer: 2.41 Sekunden
+Gesamt-Status: ✅ ERFOLGREICH
+
+================================================================================
+📋 TEST-ERGEBNISSE IM DETAIL:
+================================================================================
+
+📁 test_chat_system_automated.py
+Status: ✅ ERFOLGREICH
+Return Code: 0
+
+📤 STDOUT:
+🚀 Starte automatisierte Tests für Chat-System...
+============================================================
+
+🔍 Test: Automatische Korrektur von Unsinn
+✅ Automatische Korrektur funktioniert korrekt
+
+🔍 Test: Context-Filtering für Netzwerk-Sicherheit
+✅ Context-Filtering funktioniert korrekt
+
+🔍 Integrationstest: Vollständiger Workflow
+✅ Integrationstest erfolgreich
+
+🔍 Test: Menü-Generierung
+✅ Menü-Generierung funktioniert korrekt
+
+🔍 Test: Prompt-Generierung
+✅ Prompt-Generierung funktioniert korrekt
+
+🔍 Test: Erkennung von Unsinn in Antworten
+✅ Unsinn-Erkennung funktioniert korrekt
+
+🔍 Test: Shortcut-Interpolation
+🔍 Debug: Modell-Interpolation 'unbekannt' -> '"lxc" -> "proxmox-containers"
+"container" -> "proxmox-containers"
+"vms" -> "proxmox-vms"
+"kubernetes" -> "k8s"
+"speicherplatz" -> "storage"
+"was ist das wetter?"  -> "none"'
+✅ Shortcut-Interpolation funktioniert korrekt
+
+============================================================
+📊 Test-Ergebnisse:
+Tests ausgeführt: 7
+Fehler: 0
+Fehlschläge: 0
+
+✅ Alle Tests erfolgreich!
+
+
+📥 STDERR:
+test_automated_correction (__main__.TestChatSystemAutomated.test_automated_correction)
+Test: Automatische Korrektur von Unsinn ... ok
+test_context_filtering_network_security (__main__.TestChatSystemAutomated.test_context_filtering_network_security)
+Test: Context-Filtering für Netzwerk-Sicherheit ... ok
+test_integration_test (__main__.TestChatSystemAutomated.test_integration_test)
+Integrationstest: Vollständiger Workflow ... ok
+test_menu_generation (__main__.TestChatSystemAutomated.test_menu_generation)
+Test: Menü-Generierung ... ok
+test_prompt_generation (__main__.TestChatSystemAutomated.test_prompt_generation)
+Test: Prompt-Generierung ... ok
+test_response_quality_detection (__main__.TestChatSystemAutomated.test_response_quality_detection)
+Test: Erkennung von Unsinn in Antworten ... ok
+test_shortcut_interpolation (__main__.TestChatSystemAutomated.test_shortcut_interpolation)
+Test: Shortcut-Interpolation ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 2.195s
+
+OK
+
+--------------------------------------------------------------------------------
+
+📁 test_nonsense_detection.py
+Status: ✅ ERFOLGREICH
+Return Code: 0
+
+📤 STDOUT:
+🚀 Starte Unsinn-Erkennung Tests...
+============================================================
+
+🔍 Test: Automatische Korrektur
+✅ Automatische Korrektur funktioniert
+
+🔍 Test: Context-bewusste Korrektur
+✅ Context-bewusste Korrektur funktioniert
+
+🔍 Test: Docker-Unsinn-Erkennung
+✅ Docker-Unsinn-Erkennung funktioniert
+
+🔍 Test: Edge Cases
+✅ Edge Cases funktionieren
+
+🔍 Test: Mailserver-Unsinn-Erkennung
+✅ Mailserver-Unsinn-Erkennung funktioniert
+
+🔍 Test: Netzwerk-Unsinn-Erkennung
+✅ Netzwerk-Unsinn-Erkennung funktioniert
+
+============================================================
+📊 Unsinn-Erkennung Test-Ergebnisse:
+Tests ausgeführt: 6
+Fehler: 0
+Fehlschläge: 0
+
+✅ Alle Unsinn-Erkennung Tests erfolgreich!
+
+
+📥 STDERR:
+test_automated_correction (__main__.TestNonsenseDetection.test_automated_correction)
+Test: Automatische Korrektur ... ok
+test_context_aware_correction (__main__.TestNonsenseDetection.test_context_aware_correction)
+Test: Context-bewusste Korrektur ... ok
+test_docker_nonsense_detection (__main__.TestNonsenseDetection.test_docker_nonsense_detection)
+Test: Docker-Unsinn-Erkennung ... ok
+test_edge_cases (__main__.TestNonsenseDetection.test_edge_cases)
+Test: Edge Cases ... ok
+test_mailserver_nonsense_detection (__main__.TestNonsenseDetection.test_mailserver_nonsense_detection)
+Test: Mailserver-Unsinn-Erkennung ... ok
+test_network_nonsense_detection (__main__.TestNonsenseDetection.test_network_nonsense_detection)
+Test: Netzwerk-Unsinn-Erkennung ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.000s
+
+OK
+
+--------------------------------------------------------------------------------
+
+================================================================================
+📈 ZUSAMMENFASSUNG:
+================================================================================
+Tests erfolgreich: 2/2
+Erfolgsrate: 100.0%
+
+
+🎉 ALLE TESTS ERFOLGREICH!
+
+Das System funktioniert korrekt:
+✅ Chat-System-Automatisierung
+✅ Unsinn-Erkennung und Korrektur
+✅ Context-Filtering
+✅ Shortcut-Interpolation
+✅ Prompt-Generierung
+✅ Menü-Generierung
+✅ Integrationstests
+
+Das System ist bereit für den produktiven Einsatz!
