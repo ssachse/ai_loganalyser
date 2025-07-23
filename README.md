@@ -2,13 +2,15 @@
 
 Ein intelligenter SSH-basierter Linux-Log-Analyzer mit integriertem Ollama-Chat und Kubernetes-Cluster-Analyse.
 
-## 🌍 **Gettext-basierte Internationalisierung**
+## 🌍 **Dynamische AI-gesteuerte Internationalisierung**
 - **POSIX-konform**: Verwendet Standard-gettext ohne externe Abhängigkeiten
 - **Automatische Spracherkennung**: Erkennt Sprache aus Shell-Locale (`LANG`, `LC_ALL`, `LC_MESSAGES`)
 - **Unterstützte Sprachen**: Deutsch (Standard) und Englisch
-- **Ollama-Integration**: Automatische Übersetzungsgenerierung mit KI
+- **Dynamische Übersetzung**: Automatische KI-Übersetzung für unbekannte Locales
+- **Ollama-Integration**: Echtzeit-Übersetzungsgenerierung mit AI
 - **Fallback-System**: Robuste Übersetzungen auch ohne gettext-Dateien
-- **Einfache Erweiterung**: Neue Sprachen über .po/.mo Dateien hinzufügbar
+- **Persistierung**: Dynamische Übersetzungen werden gespeichert und wiederverwendet
+- **Runtime-Sprachwechsel**: Wechsel zwischen Sprachen zur Laufzeit
 
 ## 🚀 Features
 
@@ -76,8 +78,11 @@ ollama serve
 Die Übersetzungen werden automatisch mit Ollama generiert:
 
 ```bash
-# Übersetzungen generieren (erfordert Ollama)
+# Statische Übersetzungen generieren (erfordert Ollama)
 python3 generate_translations.py
+
+# Dynamische Übersetzungen werden automatisch generiert
+# wenn unbekannte Locales erkannt werden
 
 # Oder manuell mit gettext (erfordert gettext-Installation)
 msgfmt -o locale/de/LC_MESSAGES/ai_loganalyser.mo locale/de/LC_MESSAGES/ai_loganalyser.po
@@ -88,6 +93,16 @@ msgfmt -o locale/en/LC_MESSAGES/ai_loganalyser.mo locale/en/LC_MESSAGES/ai_logan
 - **macOS**: `brew install gettext`
 - **Ubuntu**: `sudo apt-get install gettext`
 - **Windows**: Download von https://www.gnu.org/software/gettext/
+
+### Dynamische Übersetzung testen
+
+```bash
+# Demo der dynamischen Übersetzung
+python3 demo_dynamic_translation.py
+
+# Umfassende Tests
+python3 test_dynamic_translation.py
+```
 
 ## 🚀 Verwendung
 

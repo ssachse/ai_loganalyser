@@ -25,6 +25,9 @@ from log_analyzer import LogAnalyzer, LogEntry, LogLevel, Anomaly
 from config import Config
 from i18n import _, i18n
 
+# Initialisiere dynamische Übersetzungen für unbekannte Locales
+i18n.initialize_dynamic_translation()
+
 console = Console()
 
 class SSHLogCollector:

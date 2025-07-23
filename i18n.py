@@ -7,7 +7,10 @@ POSIX-konform und ohne externe Abhängigkeiten
 import os
 import locale
 import gettext
+import json
+import requests
 from typing import Dict, Any
+from datetime import datetime
 
 class I18n:
     """Internationalisierungsklasse mit gettext-Unterstützung"""
@@ -15,6 +18,8 @@ class I18n:
     def __init__(self):
         self.current_language = self._detect_language()
         self._setup_gettext()
+        self.dynamic_translations = {}
+        self._load_dynamic_translations()
     
     def _detect_language(self) -> str:
         """Erkennt die Sprache aus der Shell-Locale"""
@@ -34,8 +39,11 @@ class I18n:
             # Unterstützte Sprachen
             if lang_code in ['de', 'deutsch', 'german']:
                 return 'de'
-            else:
+            elif lang_code in ['en', 'english']:
                 return 'en'
+            else:
+                # Unbekannte Locale - verwende Sprachcode für dynamische Übersetzung
+                return lang_code
                 
         except Exception:
             return 'en'  # Fallback auf Englisch
@@ -47,10 +55,11 @@ class I18n:
             locale_dir = os.path.join(os.path.dirname(__file__), 'locale')
             
             # Übersetzungsfunktion für aktuelle Sprache
-            if self.current_language == 'de':
-                self.translation = gettext.translation('ai_loganalyser', locale_dir, languages=['de'])
+            if self.current_language in ['de', 'en']:
+                self.translation = gettext.translation('ai_loganalyser', locale_dir, languages=[self.current_language])
             else:
-                self.translation = gettext.translation('ai_loganalyser', locale_dir, languages=['en'])
+                # Unbekannte Sprache - verwende Null-Übersetzung
+                self.translation = gettext.NullTranslations()
             
             # Übersetzungsfunktion installieren
             self.translation.install()
@@ -60,6 +69,225 @@ class I18n:
             print(f"Warning: Could not load translations: {e}")
             self.translation = gettext.NullTranslations()
             self.translation.install()
+    
+    def _load_dynamic_translations(self):
+        """Lädt dynamisch generierte Übersetzungen"""
+        try:
+            dynamic_file = os.path.join(os.path.dirname(__file__), 'dynamic_translations.json')
+            if os.path.exists(dynamic_file):
+                with open(dynamic_file, 'r', encoding='utf-8') as f:
+                    self.dynamic_translations = json.load(f)
+        except Exception:
+            self.dynamic_translations = {}
+    
+    def _save_dynamic_translations(self):
+        """Speichert dynamisch generierte Übersetzungen"""
+        try:
+            dynamic_file = os.path.join(os.path.dirname(__file__), 'dynamic_translations.json')
+            with open(dynamic_file, 'w', encoding='utf-8') as f:
+                json.dump(self.dynamic_translations, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"Warning: Could not save dynamic translations: {e}")
+    
+    def _query_ollama(self, prompt: str, model: str = "llama2") -> str:
+        """Fragt Ollama nach einer Übersetzung"""
+        try:
+            url = "http://localhost:11434/api/generate"
+            data = {
+                "model": model,
+                "prompt": prompt,
+                "stream": False
+            }
+            
+            response = requests.post(url, json=data, timeout=30)
+            if response.status_code == 200:
+                return response.json()["response"].strip()
+            else:
+                return ""
+        except Exception as e:
+            print(f"Ollama error: {e}")
+            return ""
+    
+    def _generate_dynamic_translation(self, language_code: str) -> bool:
+        """Generiert dynamische Übersetzungen für eine unbekannte Sprache"""
+        try:
+            print(f"\n🌍 Unbekannte Locale erkannt: {language_code}")
+            print("🤖 Generiere dynamische Übersetzungen mit Ollama...")
+            
+            # Prüfe Ollama-Verbindung
+            try:
+                response = requests.get("http://localhost:11434/api/tags", timeout=5)
+                if response.status_code != 200:
+                    print("❌ Ollama ist nicht erreichbar. Verwende Englisch als Fallback.")
+                    return False
+            except Exception:
+                print("❌ Ollama ist nicht erreichbar. Verwende Englisch als Fallback.")
+                return False
+            
+            # Alle zu übersetzenden Strings
+            all_strings = self._get_all_translatable_strings()
+            
+            # Generiere Übersetzungen
+            translations = {}
+            total_strings = len(all_strings)
+            
+            print(f"📝 Übersetze {total_strings} Strings ins {language_code}...")
+            
+            for i, string in enumerate(all_strings, 1):
+                print(f"  [{i}/{total_strings}] Übersetze: {string}")
+                
+                # Erstelle Prompt basierend auf Sprachcode
+                if language_code in ['fr', 'es', 'it', 'pt', 'ru', 'ja', 'ko', 'zh']:
+                    # Bekannte Sprachen mit spezifischen Prompts
+                    language_names = {
+                        'fr': 'Französisch', 'es': 'Spanisch', 'it': 'Italienisch',
+                        'pt': 'Portugiesisch', 'ru': 'Russisch', 'ja': 'Japanisch',
+                        'ko': 'Koreanisch', 'zh': 'Chinesisch'
+                    }
+                    lang_name = language_names.get(language_code, language_code)
+                    prompt = f"""Übersetze den folgenden deutschen Text ins {lang_name}.
+Gib nur die Übersetzung zurück, ohne Erklärungen oder zusätzlichen Text.
+
+Text: "{string}"
+
+{lang_name} Übersetzung:"""
+                else:
+                    # Generischer Prompt für unbekannte Sprachen
+                    prompt = f"""Translate the following German text to {language_code.upper()}.
+Return only the translation, without explanations or additional text.
+
+Text: "{string}"
+
+{language_code.upper()} translation:"""
+                
+                translation = self._query_ollama(prompt)
+                if translation:
+                    # Bereinige die Antwort
+                    translation = translation.strip().strip('"').strip("'")
+                    translations[string] = translation
+                else:
+                    # Fallback: Verwende Original
+                    translations[string] = string
+            
+            # Speichere dynamische Übersetzungen
+            self.dynamic_translations[language_code] = {
+                'translations': translations,
+                'generated_at': datetime.now().isoformat(),
+                'total_strings': total_strings
+            }
+            
+            self._save_dynamic_translations()
+            
+            print(f"✅ Dynamische Übersetzungen für {language_code} erfolgreich generiert!")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Fehler bei der Generierung dynamischer Übersetzungen: {e}")
+            return False
+    
+    def _get_all_translatable_strings(self) -> list:
+        """Gibt alle zu übersetzenden Strings zurück"""
+        # Alle Strings aus den Fallback-Übersetzungen
+        all_strings = set()
+        
+        # Aus deutschen Fallback-Übersetzungen
+        fallback_de = self._get_fallback_translation_dict('de')
+        all_strings.update(fallback_de.keys())
+        
+        # Aus englischen Fallback-Übersetzungen
+        fallback_en = self._get_fallback_translation_dict('en')
+        all_strings.update(fallback_en.keys())
+        
+        return sorted(list(all_strings))
+    
+    def _get_fallback_translation_dict(self, language: str) -> dict:
+        """Gibt Fallback-Übersetzungen als Dictionary zurück"""
+        fallback_translations = {
+            'de': {
+                'chat_title': 'Interaktiver Chat mit Ollama',
+                'chat_prompt': 'Sie können jetzt weitere Fragen über das analysierte System stellen.',
+                'chat_shortcuts': 'Kürzelwörter für häufige Fragen:',
+                'chat_exit_commands': 'zum Verlassen',
+                'chat_tip': 'Tipp:',
+                'chat_you': 'Sie:',
+                'chat_ollama': 'Ollama:',
+                'chat_thinking': 'Denke nach...',
+                'chat_no_response': 'Keine Antwort von Ollama erhalten',
+                'chat_goodbye': 'Auf Wiedersehen! Danke für die Nutzung des Log-Analyzers.',
+                'chat_using_cached': 'Verwende gecachte Antwort für',
+                'chat_cached': 'gecacht',
+                'chat_using_model': 'Verwende Modell:',
+                'chat_using_fast_model': 'Verwende schnelles Modell:',
+                'chat_using_complex_model': 'Verwende komplexes Modell:',
+                'shortcut_services': 'Welche Services laufen auf dem System?',
+                'shortcut_storage': 'Wie ist der Speicherplatz?',
+                'shortcut_security': 'Gibt es Sicherheitsprobleme?',
+                'shortcut_processes': 'Was sind die Top-Prozesse?',
+                'shortcut_performance': 'Wie ist die System-Performance?',
+                'shortcut_users': 'Welche Benutzer sind aktiv?',
+                'shortcut_updates': 'Gibt es verfügbare System-Updates?',
+                'shortcut_logs': 'Was zeigen die Logs?',
+                'shortcut_k8s': 'Wie ist der Kubernetes-Cluster-Status?',
+                'shortcut_k8s_problems': 'Welche Kubernetes-Probleme gibt es?',
+                'shortcut_k8s_pods': 'Welche Pods laufen im Cluster?',
+                'shortcut_k8s_nodes': 'Wie ist der Node-Status?',
+                'shortcut_k8s_resources': 'Wie ist die Ressourcen-Auslastung im Cluster?',
+                'shortcut_help': 'Zeige verfügbare Kürzelwörter',
+                'error_permission_denied': 'Fehlende Rechte',
+                'error_summary': 'Fehler-Zusammenfassung',
+                'menu_available_shortcuts': 'Verfügbare Kürzelwörter:',
+                'ssh_connecting': 'Verbinde mit SSH...',
+                'ssh_success': 'SSH-Verbindung erfolgreich',
+                'ssh_failed': 'SSH-Verbindung fehlgeschlagen',
+                'ssh_timeout': 'SSH-Verbindung Timeout',
+                'ssh_error': 'SSH-Fehler',
+                'analysis_running': 'Führe automatische System-Analyse durch...',
+                'analysis_summary': 'System-Analyse:',
+            },
+            'en': {
+                'chat_title': 'Interactive Chat with Ollama',
+                'chat_prompt': 'You can now ask further questions about the analyzed system.',
+                'chat_shortcuts': 'Shortcuts for common questions:',
+                'chat_exit_commands': 'to exit',
+                'chat_tip': 'Tip:',
+                'chat_you': 'You:',
+                'chat_ollama': 'Ollama:',
+                'chat_thinking': 'Thinking...',
+                'chat_no_response': 'No response received from Ollama',
+                'chat_goodbye': 'Goodbye! Thank you for using the Log Analyzer.',
+                'chat_using_cached': 'Using cached response for',
+                'chat_cached': 'cached',
+                'chat_using_model': 'Using model:',
+                'chat_using_fast_model': 'Using fast model:',
+                'chat_using_complex_model': 'Using complex model:',
+                'shortcut_services': 'Which services are running on the system?',
+                'shortcut_storage': 'How is the storage space?',
+                'shortcut_security': 'Are there security issues?',
+                'shortcut_processes': 'What are the top processes?',
+                'shortcut_performance': 'How is the system performance?',
+                'shortcut_users': 'Which users are active?',
+                'shortcut_updates': 'Are there available system updates?',
+                'shortcut_logs': 'What do the logs show?',
+                'shortcut_k8s': 'How is the Kubernetes cluster status?',
+                'shortcut_k8s_problems': 'What Kubernetes problems are there?',
+                'shortcut_k8s_pods': 'Which pods are running in the cluster?',
+                'shortcut_k8s_nodes': 'How is the node status?',
+                'shortcut_k8s_resources': 'How is the resource usage in the cluster?',
+                'shortcut_help': 'Show available shortcuts',
+                'error_permission_denied': 'Permission denied',
+                'error_summary': 'Error Summary',
+                'menu_available_shortcuts': 'Available shortcuts:',
+                'ssh_connecting': 'Connecting via SSH...',
+                'ssh_success': 'SSH connection successful',
+                'ssh_failed': 'SSH connection failed',
+                'ssh_timeout': 'SSH connection timeout',
+                'ssh_error': 'SSH error',
+                'analysis_running': 'Running automatic system analysis...',
+                'analysis_summary': 'System Analysis:',
+            }
+        }
+        
+        return fallback_translations.get(language, {})
     
     def get(self, key: str, **kwargs) -> str:
         """Holt eine Übersetzung für den gegebenen Schlüssel"""
@@ -79,6 +307,13 @@ class I18n:
     
     def _get_fallback_translation(self, key: str) -> str:
         """Fallback-Übersetzungen wenn gettext nicht funktioniert"""
+        # Prüfe zuerst dynamische Übersetzungen
+        if self.current_language in self.dynamic_translations:
+            dynamic_trans = self.dynamic_translations[self.current_language]['translations']
+            if key in dynamic_trans:
+                return dynamic_trans[key]
+        
+        # Fallback auf statische Übersetzungen
         fallback_translations = {
             'de': {
                 'chat_title': 'Interaktiver Chat mit Ollama',
@@ -175,10 +410,41 @@ class I18n:
         if language in ['de', 'en']:
             self.current_language = language
             self._setup_gettext()
+        else:
+            # Unbekannte Sprache - generiere dynamische Übersetzungen
+            if language not in self.dynamic_translations:
+                if self._generate_dynamic_translation(language):
+                    self.current_language = language
+                    self._setup_gettext()
+                else:
+                    print(f"⚠️  Konnte keine Übersetzungen für {language} generieren. Verwende Englisch.")
+                    self.current_language = 'en'
+                    self._setup_gettext()
+            else:
+                self.current_language = language
+                self._setup_gettext()
     
     def get_supported_languages(self) -> list:
         """Gibt unterstützte Sprachen zurück"""
-        return ['de', 'en']
+        supported = ['de', 'en']
+        # Füge dynamisch generierte Sprachen hinzu
+        supported.extend(list(self.dynamic_translations.keys()))
+        return supported
+    
+    def initialize_dynamic_translation(self):
+        """Initialisiert dynamische Übersetzungen für unbekannte Locales"""
+        if self.current_language not in ['de', 'en']:
+            if self.current_language not in self.dynamic_translations:
+                print(f"\n🌍 Unknown locale detected: {self.current_language}")
+                print("🤖 Generating dynamic translations with AI...")
+                
+                if self._generate_dynamic_translation(self.current_language):
+                    print(f"✅ Dynamic translations for {self.current_language} successfully generated!")
+                    print(f"🚀 Continuing in {self.current_language}...")
+                else:
+                    print("⚠️  Could not generate translations. Using English as fallback.")
+                    self.current_language = 'en'
+                    self._setup_gettext()
 
 # Globale Instanz
 i18n = I18n()
