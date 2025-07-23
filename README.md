@@ -29,16 +29,20 @@ Ein intelligenter SSH-basierter Linux-Log-Analyzer mit integriertem Ollama-Chat 
 - **Storage-Analyse**: Persistent Volumes und deren Status
 
 ### 🤖 **Intelligenter Ollama-Chat**
-- **Zwei-Tier-Modell-System**: Schnelle und komplexe Analysen
+- **Dynamische Modell-Auswahl**: Intelligente Auswahl basierend auf Komplexität
 - **Kürzelwörter**: Schnelle Zugriffe auf häufige Fragen
 - **Intelligentes Caching**: Optimierte Performance für wiederholte Fragen
 - **Automatische System-Analyse**: Detaillierte Einblicke beim Start
+- **Deutsche Übersetzungen**: Vollständig lokalisierte Benutzeroberfläche
+- **Automatische Berichterstellung**: Professionelle Systemberichte mit Handlungsanweisungen
 
 ### ⚡ **Performance-Optimierungen**
 - **Quick-Modus**: Überspringt zeitaufwändige Analysen
 - **Intelligente Fehlerbehandlung**: Gruppierte Fehler-Zusammenfassung
 - **Modell-Auswahl**: Automatische Komplexitäts-Erkennung
 - **Cache-System**: Vermeidung redundanter API-Aufrufe
+- **Asynchrone Analyse**: Hintergrund-Analyse für sofortige Menü-Anzeige
+- **Debug-Modus**: Detaillierte Ausgaben für Entwickler
 
 ## 📋 Voraussetzungen
 
@@ -119,6 +123,9 @@ python3 ssh_chat_system.py user@hostname --quick
 # Ohne Log-Sammlung (nur System-Info)
 python3 ssh_chat_system.py user@hostname --no-logs
 
+# Debug-Modus (detaillierte Ausgaben)
+python3 ssh_chat_system.py user@hostname --debug
+
 # Benutzerdefinierte SSH-Parameter
 python3 ssh_chat_system.py user@hostname --port 2222 --key-file ~/.ssh/id_rsa
 
@@ -134,8 +141,18 @@ security    - Gibt es Sicherheitsprobleme?
 performance - Wie ist die System-Performance?
 users       - Welche Benutzer sind aktiv?
 updates     - Gibt es verfügbare System-Updates?
+logs        - Was zeigen die Logs?
 k8s         - Wie ist der Kubernetes-Cluster-Status?
 k8s-problems- Welche Kubernetes-Probleme gibt es?
+k8s-pods    - Welche Pods laufen im Cluster?
+k8s-nodes   - Wie ist der Node-Status?
+k8s-resources- Wie ist die Ressourcen-Auslastung?
+proxmox     - Wie ist der Proxmox VE-Status?
+proxmox-problems- Welche Proxmox-Probleme gibt es?
+proxmox-vms - Welche VMs laufen auf Proxmox?
+proxmox-containers- Welche Container laufen auf Proxmox?
+proxmox-storage- Wie ist der Proxmox-Speicherplatz?
+report      - Erstelle einen detaillierten Systembericht mit Handlungsanweisungen
 help        - Zeige verfügbare Kürzelwörter
 ```
 
@@ -148,13 +165,26 @@ help        - Zeige verfügbare Kürzelwörter
 
 ### Ollama-Integration
 - **Standard-Port**: 11434
-- **Modelle**: Automatische Auswahl basierend auf Komplexität
+- **Modelle**: Intelligente Auswahl basierend auf Modellnamen und Komplexität
 - **Cache**: Intelligentes Caching für optimale Performance
+- **Modell-Prioritäten**: 
+  - **Menü**: `qwen:0.5b` (ultraschnell)
+  - **Einfache Analysen**: `qwen:0.5b` → `llama3.2:3b`
+  - **Komplexe Analysen**: `llama3.1:8b` → `deepseek-r1:14b` → `mistral:7b`
+- **Report-Generierung**: Verwendet `llama3.1:8b` für professionelle Berichte
 
 ### Kubernetes-Analyse
 - **Automatische Erkennung**: Prüft `kubectl` Verfügbarkeit
 - **Berechtigungen**: Erfordert Cluster-Zugriff
 - **Fehlerbehandlung**: Gruppierte kubectl-Fehler
+
+### 📊 **Automatische Berichterstellung**
+- **CRAFT-Prompt**: Professioneller Enterprise-Architekt-Prompt
+- **Markdown-Export**: Strukturierte Berichte als `.md` Dateien
+- **Automatische Speicherung**: `system_reports/` Verzeichnis mit Timestamp
+- **Deutsche Berichte**: Vollständig auf Deutsch erstellte Berichte
+- **Strukturierte Ausgabe**: Executive Summary, Maßnahmenübersicht, Detail-Actionplan
+- **Priorisierung**: Impact/Aufwand-Bewertung mit Quick Wins → Mid-Term → Long-Term
 
 ## 📊 Ausgabe-Beispiele
 
@@ -198,6 +228,42 @@ Kubernetes control plane is running at https://142.132.176.3:6443
    • Log-Datei-Zugriff
 
 💡 Tipp: Verwenden Sie einen Benutzer mit erweiterten Rechten für vollständige Analyse.
+```
+
+### 📄 **Automatische Berichterstellung**
+```
+✅ Bericht erfolgreich erstellt:
+📄 system_reports/system_report_server_20250723_143022.md
+
+# Systembericht: server.example.com
+
+**Erstellt am:** 23.07.2025 um 14:30 Uhr
+**System:** server.example.com
+**Distribution:** Ubuntu 22.04.5 LTS
+**Kernel:** 5.15.0-139-generic
+
+---
+
+## Executive Summary
+
+Das System zeigt mehrere kritische Punkte, die sofortige Aufmerksamkeit erfordern.
+
+## Priorisierte Maßnahmenübersicht
+
+| ID | Thema | Maßnahme | Impact | Aufwand | Priorität |
+|----|-------|----------|--------|---------|-----------|
+| 1 | Speicherplatz | Root-Partition erweitern | Hoch | Mittel | Kritisch |
+| 2 | Sicherheit | SSH-Konfiguration härten | Hoch | Niedrig | Hoch |
+| 3 | Performance | Log-Rotation implementieren | Mittel | Niedrig | Mittel |
+
+## Detail-Actionplan
+
+### 1. Speicherplatz-Optimierung
+- **Was:** Root-Partition erweitern oder Daten migrieren
+- **Warum:** 75% Auslastung ist kritisch
+- **Wie:** LVM erweitern oder /var auf separate Partition
+- **Aufwand:** 2-4 Stunden
+- **Verantwortlich:** System-Administrator
 ```
 
 ## 🔒 Sicherheit

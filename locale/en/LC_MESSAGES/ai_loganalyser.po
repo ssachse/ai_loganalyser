@@ -93,6 +93,21 @@ msgstr "What Kubernetes problems are there?"
 msgid "shortcut_k8s_resources"
 msgstr "How is the resource usage in the cluster?"
 
+msgid "shortcut_proxmox"
+msgstr "How is the Proxmox cluster status?"
+
+msgid "shortcut_proxmox_containers"
+msgstr "Which containers are running in the cluster?"
+
+msgid "shortcut_proxmox_problems"
+msgstr "What Proxmox problems are there?"
+
+msgid "shortcut_proxmox_storage"
+msgstr "How is the storage status?"
+
+msgid "shortcut_proxmox_vms"
+msgstr "Which VMs are running in the cluster?"
+
 msgid "shortcut_logs"
 msgstr "What do the logs show?"
 
