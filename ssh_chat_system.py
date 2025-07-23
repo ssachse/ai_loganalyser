@@ -3806,6 +3806,12 @@ def create_chat_prompt(system_context: str, user_question: str, chat_history: Li
             prompt_parts.append("- Analysiere die Sicherheits-Informationen")
             prompt_parts.append("- Identifiziere Sicherheitsprobleme")
             prompt_parts.append("- Gib Sicherheits-Empfehlungen")
+        elif any(keyword in question_lower for keyword in ['docker', 'container']):
+            prompt_parts.append("- FOKUSSIERE DICH AUSSCHLIESSLICH auf Docker-spezifische Themen")
+            prompt_parts.append("- Analysiere nur Docker-Container, Images, Volumes und Netzwerke")
+            prompt_parts.append("- IGNORIERE Proxmox-Container, VMs, Nodes und andere nicht-Docker-Systeme")
+            prompt_parts.append("- Verwende nur Docker-bezogene System-Daten")
+            prompt_parts.append("- Gib nur Docker-spezifische Empfehlungen und Befehle")
         elif any(keyword in question_lower for keyword in ['netzwerk', 'network', 'network-security']):
             prompt_parts.append("- FOKUSSIERE DICH AUSSCHLIESSLICH auf Netzwerk-spezifische Themen")
             prompt_parts.append("- Analysiere nur lauschende Services, externe Erreichbarkeit, Firewall-Konfiguration")
@@ -3866,10 +3872,11 @@ def detect_and_correct_nonsense(response: str, question: str, system_info: Dict[
     
     # Context-Mismatches erkennen
     context_mismatches = {
-        "docker": ["netzwerk-sicherheitsanalyse", "ssh-service", "mailserver"],
-        "mailserver": ["netzwerk-sicherheitsanalyse", "ssh-service", "docker"],
-        "netzwerk": ["docker", "mailserver", "container"],
-        "services": ["netzwerk-sicherheitsanalyse", "docker", "mailserver"]
+        "docker": ["netzwerk-sicherheitsanalyse", "ssh-service", "mailserver", "proxmox", "node", "vm", "offline-node"],
+        "mailserver": ["netzwerk-sicherheitsanalyse", "ssh-service", "docker", "proxmox"],
+        "netzwerk": ["docker", "mailserver", "container", "proxmox"],
+        "services": ["netzwerk-sicherheitsanalyse", "docker", "mailserver", "proxmox"],
+        "proxmox": ["docker", "mailserver", "netzwerk-sicherheitsanalyse"]
     }
     
     # Prüfe Context-Mismatches
@@ -3884,9 +3891,14 @@ Docker-Status-Analyse:
 
 Basierend auf den System-Daten:
 - Docker ist {'verfügbar' if system_info.get('docker_detected', False) else 'nicht verfügbar'}
-- Verwende 'docker ps' um laufende Container zu sehen
-- Verwende 'docker images' um verfügbare Images zu sehen
-- Verwende 'docker system df' um Speicherplatz zu prüfen
+
+Docker-Befehle für die Analyse:
+- `docker ps` - Laufende Container anzeigen
+- `docker ps -a` - Alle Container (auch gestoppte) anzeigen
+- `docker images` - Verfügbare Images anzeigen
+- `docker system df` - Docker-Speicherplatz prüfen
+- `docker volume ls` - Docker-Volumes anzeigen
+- `docker network ls` - Docker-Netzwerke anzeigen
 
 Für detaillierte Informationen führen Sie bitte 'docker ps -a' aus.
 """
