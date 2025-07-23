@@ -1978,7 +1978,49 @@ class SSHLogCollector:
                             if https_headers:
                                 accessibility_results['security_headers'][port] = https_headers
             
-            # Sicherheits-Indikatoren
+            # Erweiterte Vulnerability-Analyse
+            accessibility_results['vulnerability_analysis'] = {}
+            
+            # Prüfe jeden erreichbaren Service auf Vulnerabilities
+            for port in accessibility_results['reachable_ports']:
+                service_version = accessibility_results['service_versions'].get(port, '')
+                service_name = self._identify_service_by_port(port)
+                
+                # Extrahiere Version aus Service-String
+                version = None
+                if service_version:
+                    import re
+                    version_match = re.search(r'(\d+\.\d+\.?\d*)', service_version)
+                    if version_match:
+                        version = version_match.group(1)
+                
+                # Führe Vulnerability-Check durch
+                if service_name and version:
+                    console.print(f"[dim]🔍 Prüfe {service_name} {version} auf Vulnerabilities...[/dim]")
+                    vuln_info = self._check_vulnerability_databases(service_name, version, port)
+                    accessibility_results['vulnerability_analysis'][port] = vuln_info
+                    
+                    # Füge kritische Vulnerabilities zu Indikatoren hinzu
+                    if vuln_info['critical_cves']:
+                        accessibility_results['vulnerability_indicators'].append(f"Kritische CVE in {service_name} {version}: {len(vuln_info['critical_cves'])} gefunden")
+                    
+                    if vuln_info['high_cves']:
+                        accessibility_results['vulnerability_indicators'].append(f"Hohe CVE in {service_name} {version}: {len(vuln_info['high_cves'])} gefunden")
+            
+            # Security-Headers für Web-Services prüfen
+            accessibility_results['security_headers_analysis'] = {}
+            for target_host in target_hosts:
+                for port in [80, 443, 8080, 8443]:
+                    if port in accessibility_results['reachable_ports']:
+                        console.print(f"[dim]🔍 Prüfe Security-Headers für {target_host}:{port}...[/dim]")
+                        headers_info = self._check_security_headers(target_host, port)
+                        accessibility_results['security_headers_analysis'][f"{target_host}:{port}"] = headers_info
+                        
+                        # Füge Security-Header-Probleme zu Indikatoren hinzu
+                        if headers_info['security_score'] < 50:
+                            accessibility_results['vulnerability_indicators'].append(f"Schwache Security-Headers auf {target_host}:{port} (Score: {headers_info['security_score']})")
+            
+            # Legacy-Sicherheits-Indikatoren (für Kompatibilität)
             if 22 in accessibility_results['reachable_ports']:
                 ssh_version = accessibility_results['service_versions'].get(22, '')
                 if 'OpenSSH' in ssh_version:
@@ -2063,6 +2105,430 @@ class SSHLogCollector:
             dns_results['error'] = str(e)
         
         return dns_results
+    
+    def _check_vulnerability_databases(self, service_name: str, version: str = None, port: int = None) -> Dict[str, Any]:
+        """Prüft verschiedene Vulnerability-Datenbanken für bekannte Schwachstellen"""
+        vulnerability_info = {
+            'service': service_name,
+            'version': version,
+            'port': port,
+            'cve_count': 0,
+            'critical_cves': [],
+            'high_cves': [],
+            'medium_cves': [],
+            'low_cves': [],
+            'last_checked': None,
+            'sources': []
+        }
+        
+        try:
+            import requests
+            import json
+            from datetime import datetime
+            
+            # NVD (National Vulnerability Database) API
+            if version:
+                nvd_url = f"https://services.nvd.nist.gov/rest/json/cves/2.0"
+                params = {
+                    'keywordSearch': f"{service_name} {version}",
+                    'resultsPerPage': 20
+                }
+                
+                try:
+                    response = requests.get(nvd_url, params=params, timeout=10)
+                    if response.status_code == 200:
+                        nvd_data = response.json()
+                        if 'vulnerabilities' in nvd_data:
+                            for vuln in nvd_data['vulnerabilities']:
+                                cve = vuln.get('cve', {})
+                                cve_id = cve.get('id', 'Unknown')
+                                metrics = cve.get('metrics', {})
+                                
+                                # CVSS Score ermitteln
+                                cvss_score = 0
+                                if 'cvssMetricV31' in metrics:
+                                    cvss_score = float(metrics['cvssMetricV31'][0].get('cvssData', {}).get('baseScore', 0))
+                                elif 'cvssMetricV30' in metrics:
+                                    cvss_score = float(metrics['cvssMetricV30'][0].get('cvssData', {}).get('baseScore', 0))
+                                elif 'cvssMetricV2' in metrics:
+                                    cvss_score = float(metrics['cvssMetricV2'][0].get('cvssData', {}).get('baseScore', 0))
+                                
+                                # CVE nach Schweregrad kategorisieren
+                                if cvss_score >= 9.0:
+                                    vulnerability_info['critical_cves'].append({
+                                        'id': cve_id,
+                                        'score': cvss_score,
+                                        'description': cve.get('descriptions', [{}])[0].get('value', 'No description')
+                                    })
+                                elif cvss_score >= 7.0:
+                                    vulnerability_info['high_cves'].append({
+                                        'id': cve_id,
+                                        'score': cvss_score,
+                                        'description': cve.get('descriptions', [{}])[0].get('value', 'No description')
+                                    })
+                                elif cvss_score >= 4.0:
+                                    vulnerability_info['medium_cves'].append({
+                                        'id': cve_id,
+                                        'score': cvss_score,
+                                        'description': cve.get('descriptions', [{}])[0].get('value', 'No description')
+                                    })
+                                else:
+                                    vulnerability_info['low_cves'].append({
+                                        'id': cve_id,
+                                        'score': cvss_score,
+                                        'description': cve.get('descriptions', [{}])[0].get('value', 'No description')
+                                    })
+                                
+                                vulnerability_info['cve_count'] += 1
+                        
+                        vulnerability_info['sources'].append('NVD')
+                except Exception as e:
+                    console.print(f"[dim]⚠️  NVD API Fehler: {e}[/dim]")
+            
+            # CVE-Search.org API (falls verfügbar)
+            try:
+                cve_search_url = f"https://cve.circl.lu/api/search/{service_name}"
+                response = requests.get(cve_search_url, timeout=10)
+                if response.status_code == 200:
+                    cve_data = response.json()
+                    if isinstance(cve_data, list):
+                        for cve in cve_data[:10]:  # Limitiere auf 10 Ergebnisse
+                            cve_id = cve.get('id', 'Unknown')
+                            cvss_score = float(cve.get('cvss', 0))
+                            
+                            if cvss_score >= 9.0:
+                                vulnerability_info['critical_cves'].append({
+                                    'id': cve_id,
+                                    'score': cvss_score,
+                                    'description': cve.get('summary', 'No description')
+                                })
+                            elif cvss_score >= 7.0:
+                                vulnerability_info['high_cves'].append({
+                                    'id': cve_id,
+                                    'score': cvss_score,
+                                    'description': cve.get('summary', 'No description')
+                                })
+                            elif cvss_score >= 4.0:
+                                vulnerability_info['medium_cves'].append({
+                                    'id': cve_id,
+                                    'score': cvss_score,
+                                    'description': cve.get('summary', 'No description')
+                                })
+                            else:
+                                vulnerability_info['low_cves'].append({
+                                    'id': cve_id,
+                                    'score': cvss_score,
+                                    'description': cve.get('summary', 'No description')
+                                })
+                            
+                            vulnerability_info['cve_count'] += 1
+                        
+                        vulnerability_info['sources'].append('CVE-Search')
+            except Exception as e:
+                console.print(f"[dim]⚠️  CVE-Search API Fehler: {e}[/dim]")
+            
+            # Service-spezifische Checks
+            if service_name.lower() in ['ssh', 'openssh']:
+                vulnerability_info.update(self._check_ssh_vulnerabilities(version))
+            elif service_name.lower() in ['apache', 'httpd']:
+                vulnerability_info.update(self._check_apache_vulnerabilities(version))
+            elif service_name.lower() in ['nginx']:
+                vulnerability_info.update(self._check_nginx_vulnerabilities(version))
+            elif service_name.lower() in ['mysql', 'mariadb']:
+                vulnerability_info.update(self._check_mysql_vulnerabilities(version))
+            elif service_name.lower() in ['postgresql', 'postgres']:
+                vulnerability_info.update(self._check_postgresql_vulnerabilities(version))
+            
+            vulnerability_info['last_checked'] = datetime.now().isoformat()
+            
+        except Exception as e:
+            vulnerability_info['error'] = str(e)
+            console.print(f"[dim]⚠️  Vulnerability-Check Fehler: {e}[/dim]")
+        
+        return vulnerability_info
+    
+    def _check_ssh_vulnerabilities(self, version: str = None) -> Dict[str, Any]:
+        """Spezielle SSH-Vulnerability-Checks"""
+        ssh_vulns = {
+            'ssh_specific': [],
+            'recommendations': []
+        }
+        
+        try:
+            if version:
+                # Prüfe auf bekannte SSH-Vulnerabilities
+                known_vulnerable_versions = [
+                    '4.', '5.', '6.', '7.0', '7.1', '7.2', '7.3', '7.4', '7.5', '7.6', '7.7'
+                ]
+                
+                for vuln_ver in known_vulnerable_versions:
+                    if version.startswith(vuln_ver):
+                        ssh_vulns['ssh_specific'].append(f"Alte SSH-Version {version} - Update empfohlen")
+                        ssh_vulns['recommendations'].append("SSH auf neueste Version aktualisieren")
+                        break
+                
+                # Prüfe auf spezifische CVE-Patterns
+                if '7.2' in version:
+                    ssh_vulns['ssh_specific'].append("CVE-2016-6210: Timing attack vulnerability")
+                elif '7.1' in version:
+                    ssh_vulns['ssh_specific'].append("CVE-2016-1908: Memory leak vulnerability")
+            
+            # Allgemeine SSH-Empfehlungen
+            ssh_vulns['recommendations'].extend([
+                "Key-basierte Authentifizierung verwenden",
+                "PasswordAuthentication deaktivieren",
+                "Root-Login deaktivieren",
+                "Fail2ban für Brute-Force-Schutz konfigurieren"
+            ])
+            
+        except Exception as e:
+            ssh_vulns['error'] = str(e)
+        
+        return ssh_vulns
+    
+    def _check_apache_vulnerabilities(self, version: str = None) -> Dict[str, Any]:
+        """Spezielle Apache-Vulnerability-Checks"""
+        apache_vulns = {
+            'apache_specific': [],
+            'recommendations': []
+        }
+        
+        try:
+            if version:
+                # Prüfe auf bekannte Apache-Vulnerabilities
+                known_vulnerable_versions = [
+                    '2.2.', '2.0.', '1.3.'
+                ]
+                
+                for vuln_ver in known_vulnerable_versions:
+                    if version.startswith(vuln_ver):
+                        apache_vulns['apache_specific'].append(f"Alte Apache-Version {version} - Update empfohlen")
+                        apache_vulns['recommendations'].append("Apache auf neueste Version aktualisieren")
+                        break
+            
+            # Allgemeine Apache-Empfehlungen
+            apache_vulns['recommendations'].extend([
+                "ServerTokens Prod konfigurieren",
+                "ServerSignature Off setzen",
+                "ModSecurity WAF aktivieren",
+                "HTTPS erzwingen",
+                "Sicherheits-Header setzen"
+            ])
+            
+        except Exception as e:
+            apache_vulns['error'] = str(e)
+        
+        return apache_vulns
+    
+    def _check_nginx_vulnerabilities(self, version: str = None) -> Dict[str, Any]:
+        """Spezielle Nginx-Vulnerability-Checks"""
+        nginx_vulns = {
+            'nginx_specific': [],
+            'recommendations': []
+        }
+        
+        try:
+            if version:
+                # Prüfe auf bekannte Nginx-Vulnerabilities
+                known_vulnerable_versions = [
+                    '1.0.', '1.1.', '1.2.', '1.3.', '1.4.', '1.5.', '1.6.'
+                ]
+                
+                for vuln_ver in known_vulnerable_versions:
+                    if version.startswith(vuln_ver):
+                        nginx_vulns['nginx_specific'].append(f"Alte Nginx-Version {version} - Update empfohlen")
+                        nginx_vulns['recommendations'].append("Nginx auf neueste Version aktualisieren")
+                        break
+            
+            # Allgemeine Nginx-Empfehlungen
+            nginx_vulns['recommendations'].extend([
+                "server_tokens off konfigurieren",
+                "HTTPS erzwingen",
+                "Sicherheits-Header setzen",
+                "Rate-Limiting aktivieren",
+                "ModSecurity WAF aktivieren"
+            ])
+            
+        except Exception as e:
+            nginx_vulns['error'] = str(e)
+        
+        return nginx_vulns
+    
+    def _check_mysql_vulnerabilities(self, version: str = None) -> Dict[str, Any]:
+        """Spezielle MySQL-Vulnerability-Checks"""
+        mysql_vulns = {
+            'mysql_specific': [],
+            'recommendations': []
+        }
+        
+        try:
+            if version:
+                # Prüfe auf bekannte MySQL-Vulnerabilities
+                known_vulnerable_versions = [
+                    '5.0.', '5.1.', '5.5.', '5.6.'
+                ]
+                
+                for vuln_ver in known_vulnerable_versions:
+                    if version.startswith(vuln_ver):
+                        mysql_vulns['mysql_specific'].append(f"Alte MySQL-Version {version} - Update empfohlen")
+                        mysql_vulns['recommendations'].append("MySQL auf neueste Version aktualisieren")
+                        break
+            
+            # Allgemeine MySQL-Empfehlungen
+            mysql_vulns['recommendations'].extend([
+                "Root-Passwort ändern",
+                "Anonyme Benutzer entfernen",
+                "Test-Datenbank entfernen",
+                "Remote-Zugriff einschränken",
+                "SSL/TLS für Verbindungen aktivieren"
+            ])
+            
+        except Exception as e:
+            mysql_vulns['error'] = str(e)
+        
+        return mysql_vulns
+    
+    def _check_postgresql_vulnerabilities(self, version: str = None) -> Dict[str, Any]:
+        """Spezielle PostgreSQL-Vulnerability-Checks"""
+        postgres_vulns = {
+            'postgres_specific': [],
+            'recommendations': []
+        }
+        
+        try:
+            if version:
+                # Prüfe auf bekannte PostgreSQL-Vulnerabilities
+                known_vulnerable_versions = [
+                    '8.', '9.0.', '9.1.', '9.2.', '9.3.', '9.4.', '9.5.'
+                ]
+                
+                for vuln_ver in known_vulnerable_versions:
+                    if version.startswith(vuln_ver):
+                        postgres_vulns['postgres_specific'].append(f"Alte PostgreSQL-Version {version} - Update empfohlen")
+                        postgres_vulns['recommendations'].append("PostgreSQL auf neueste Version aktualisieren")
+                        break
+            
+            # Allgemeine PostgreSQL-Empfehlungen
+            postgres_vulns['recommendations'].extend([
+                "Postgres-Benutzer-Passwort ändern",
+                "pg_hba.conf für Zugriffskontrolle konfigurieren",
+                "SSL für Verbindungen aktivieren",
+                "Logging aktivieren",
+                "Regelmäßige Backups konfigurieren"
+            ])
+            
+        except Exception as e:
+            postgres_vulns['error'] = str(e)
+        
+        return postgres_vulns
+    
+    def _check_security_headers(self, target_host: str, port: int = 80) -> Dict[str, Any]:
+        """Prüft Security-Headers von Web-Services"""
+        headers_info = {
+            'target': f"{target_host}:{port}",
+            'headers': {},
+            'security_score': 0,
+            'missing_headers': [],
+            'recommendations': []
+        }
+        
+        try:
+            import requests
+            
+            # Teste HTTP und HTTPS
+            protocols = ['http', 'https']
+            if port == 443:
+                protocols = ['https']
+            elif port == 80:
+                protocols = ['http']
+            
+            for protocol in protocols:
+                try:
+                    url = f"{protocol}://{target_host}:{port}"
+                    response = requests.get(url, timeout=10, allow_redirects=False)
+                    
+                    # Sammle alle Security-Headers
+                    security_headers = {
+                        'Strict-Transport-Security': response.headers.get('Strict-Transport-Security'),
+                        'X-Content-Type-Options': response.headers.get('X-Content-Type-Options'),
+                        'X-Frame-Options': response.headers.get('X-Frame-Options'),
+                        'X-XSS-Protection': response.headers.get('X-XSS-Protection'),
+                        'Content-Security-Policy': response.headers.get('Content-Security-Policy'),
+                        'Referrer-Policy': response.headers.get('Referrer-Policy'),
+                        'Permissions-Policy': response.headers.get('Permissions-Policy'),
+                        'Server': response.headers.get('Server'),
+                        'X-Powered-By': response.headers.get('X-Powered-By')
+                    }
+                    
+                    headers_info['headers'] = security_headers
+                    
+                    # Bewerte Security-Headers
+                    score = 0
+                    missing = []
+                    
+                    if security_headers['Strict-Transport-Security']:
+                        score += 20
+                    else:
+                        missing.append('Strict-Transport-Security')
+                    
+                    if security_headers['X-Content-Type-Options'] == 'nosniff':
+                        score += 15
+                    else:
+                        missing.append('X-Content-Type-Options')
+                    
+                    if security_headers['X-Frame-Options']:
+                        score += 15
+                    else:
+                        missing.append('X-Frame-Options')
+                    
+                    if security_headers['X-XSS-Protection']:
+                        score += 10
+                    else:
+                        missing.append('X-XSS-Protection')
+                    
+                    if security_headers['Content-Security-Policy']:
+                        score += 20
+                    else:
+                        missing.append('Content-Security-Policy')
+                    
+                    if not security_headers['Server']:
+                        score += 10
+                    else:
+                        missing.append('Server-Header verstecken')
+                    
+                    if not security_headers['X-Powered-By']:
+                        score += 10
+                    else:
+                        missing.append('X-Powered-By-Header verstecken')
+                    
+                    headers_info['security_score'] = score
+                    headers_info['missing_headers'] = missing
+                    
+                    # Empfehlungen basierend auf fehlenden Headers
+                    if 'Strict-Transport-Security' in missing:
+                        headers_info['recommendations'].append("HSTS-Header hinzufügen: max-age=31536000; includeSubDomains")
+                    
+                    if 'X-Content-Type-Options' in missing:
+                        headers_info['recommendations'].append("X-Content-Type-Options: nosniff hinzufügen")
+                    
+                    if 'X-Frame-Options' in missing:
+                        headers_info['recommendations'].append("X-Frame-Options: DENY oder SAMEORIGIN hinzufügen")
+                    
+                    if 'Content-Security-Policy' in missing:
+                        headers_info['recommendations'].append("Content-Security-Policy-Header konfigurieren")
+                    
+                    if 'Server-Header verstecken' in missing:
+                        headers_info['recommendations'].append("Server-Header in Web-Server-Konfiguration verstecken")
+                    
+                    break  # Verwende das erste erfolgreiche Protokoll
+                    
+                except Exception as e:
+                    continue
+            
+        except Exception as e:
+            headers_info['error'] = str(e)
+        
+        return headers_info
     
     def assess_network_security(self, internal_services: Dict, external_tests: Dict) -> Dict[str, Any]:
         """Bewertet die Netzwerk-Sicherheit basierend auf allen Tests"""
@@ -2176,9 +2642,34 @@ class SSHLogCollector:
             if public_exposed_services.intersection(web_services):
                 risk_score += 1
             
-            # Vulnerability-Indikatoren
+            # Erweiterte Vulnerability-Bewertung
             vulnerability_count = len(external_tests.get('vulnerability_indicators', []))
             risk_score += vulnerability_count
+            
+            # Berücksichtige detaillierte Vulnerability-Analyse
+            vulnerability_analysis = external_tests.get('vulnerability_analysis', {})
+            total_critical_cves = 0
+            total_high_cves = 0
+            total_medium_cves = 0
+            
+            for port, vuln_info in vulnerability_analysis.items():
+                total_critical_cves += len(vuln_info.get('critical_cves', []))
+                total_high_cves += len(vuln_info.get('high_cves', []))
+                total_medium_cves += len(vuln_info.get('medium_cves', []))
+            
+            # Gewichtete Risiko-Bewertung basierend auf CVE-Schweregrad
+            risk_score += total_critical_cves * 5  # Kritische CVEs haben hohes Gewicht
+            risk_score += total_high_cves * 3      # Hohe CVEs haben mittleres Gewicht
+            risk_score += total_medium_cves * 1    # Mittlere CVEs haben niedriges Gewicht
+            
+            # Security-Headers-Bewertung
+            security_headers_analysis = external_tests.get('security_headers_analysis', {})
+            weak_headers_count = 0
+            for target, headers_info in security_headers_analysis.items():
+                if headers_info.get('security_score', 100) < 50:
+                    weak_headers_count += 1
+            
+            risk_score += weak_headers_count * 2  # Schwache Security-Headers erhöhen Risiko
             
             # Risiko-Level bestimmen
             if risk_score >= 5:
@@ -2209,8 +2700,21 @@ class SSHLogCollector:
                 if public_exposed_services.intersection(web_services):
                     recommendations.append("Web-Services sind auf öffentlichen IPs erreichbar - HTTPS erzwingen")
                 
-                if vulnerability_count > 0:
-                    recommendations.append(f"{vulnerability_count} Sicherheitsprobleme auf öffentlichen IPs gefunden - Updates prüfen")
+                            # Vulnerability-basierte Empfehlungen
+            if total_critical_cves > 0:
+                recommendations.append(f"🚨 {total_critical_cves} kritische CVEs gefunden - SOFORTIGE Updates erforderlich")
+            
+            if total_high_cves > 0:
+                recommendations.append(f"⚠️  {total_high_cves} hohe CVEs gefunden - Prioritäre Updates empfohlen")
+            
+            if total_medium_cves > 0:
+                recommendations.append(f"🔶 {total_medium_cves} mittlere CVEs gefunden - Updates planen")
+            
+            if weak_headers_count > 0:
+                recommendations.append(f"🔒 {weak_headers_count} Services mit schwachen Security-Headers - Konfiguration prüfen")
+            
+            if vulnerability_count > 0:
+                recommendations.append(f"📊 {vulnerability_count} Sicherheitsprobleme auf öffentlichen IPs gefunden - Detaillierte Analyse verfügbar")
             else:
                 recommendations.append("Keine öffentlichen IPs erreichbar - System ist intern isoliert")
             
@@ -3731,6 +4235,57 @@ def create_system_context(system_info: Dict[str, Any], log_entries: List[LogEntr
                     for port, version in service_versions.items():
                         context_parts.append(f"  Port {port}: {version}")
             
+            # Erweiterte Vulnerability-Analyse
+            if 'vulnerability_analysis' in external_tests:
+                vuln_analysis = external_tests['vulnerability_analysis']
+                if vuln_analysis:
+                    context_parts.append("Vulnerability-Analyse:")
+                    for port, vuln_info in vuln_analysis.items():
+                        service_name = vuln_info.get('service', f'Service-{port}')
+                        version = vuln_info.get('version', 'Unbekannt')
+                        context_parts.append(f"  {service_name} {version} (Port {port}):")
+                        
+                        if vuln_info.get('critical_cves'):
+                            context_parts.append(f"    🚨 Kritische CVEs: {len(vuln_info['critical_cves'])}")
+                            for cve in vuln_info['critical_cves'][:3]:  # Zeige nur die ersten 3
+                                context_parts.append(f"      • {cve['id']} (Score: {cve['score']})")
+                        
+                        if vuln_info.get('high_cves'):
+                            context_parts.append(f"    ⚠️  Hohe CVEs: {len(vuln_info['high_cves'])}")
+                            for cve in vuln_info['high_cves'][:3]:  # Zeige nur die ersten 3
+                                context_parts.append(f"      • {cve['id']} (Score: {cve['score']})")
+                        
+                        if vuln_info.get('medium_cves'):
+                            context_parts.append(f"    🔶 Mittlere CVEs: {len(vuln_info['medium_cves'])}")
+                        
+                        if vuln_info.get('low_cves'):
+                            context_parts.append(f"    🔵 Niedrige CVEs: {len(vuln_info['low_cves'])}")
+                        
+                        # Service-spezifische Empfehlungen
+                        if vuln_info.get('recommendations'):
+                            context_parts.append(f"    💡 Empfehlungen:")
+                            for rec in vuln_info['recommendations'][:3]:  # Zeige nur die ersten 3
+                                context_parts.append(f"      • {rec}")
+            
+            # Security-Headers-Analyse
+            if 'security_headers_analysis' in external_tests:
+                headers_analysis = external_tests['security_headers_analysis']
+                if headers_analysis:
+                    context_parts.append("Security-Headers-Analyse:")
+                    for target, headers_info in headers_analysis.items():
+                        score = headers_info.get('security_score', 0)
+                        score_emoji = "🟢" if score >= 80 else "🟡" if score >= 50 else "🔴"
+                        context_parts.append(f"  {score_emoji} {target}: Score {score}/100")
+                        
+                        if headers_info.get('missing_headers'):
+                            context_parts.append(f"    Fehlende Headers: {', '.join(headers_info['missing_headers'][:3])}")
+                        
+                        if headers_info.get('recommendations'):
+                            context_parts.append(f"    💡 Empfehlungen:")
+                            for rec in headers_info['recommendations'][:2]:  # Zeige nur die ersten 2
+                                context_parts.append(f"      • {rec}")
+            
+            # Legacy Vulnerability-Indikatoren
             if 'vulnerability_indicators' in external_tests:
                 vuln_indicators = external_tests['vulnerability_indicators']
                 if vuln_indicators:
