@@ -2420,74 +2420,9 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
     console.print(f"\n[bold blue]💬 {get_text('chat_title')}[/bold blue]")
     console.print("="*60)
     console.print(get_text('chat_prompt'))
-    console.print(f"\n[bold cyan]{get_text('chat_shortcuts')}[/bold cyan]")
-    
-    # System-Kategorien
-    console.print(f"\n[bold green]System:[/bold green]")
-    console.print(f"  • 'services' - {get_text('shortcut_services')}")
-    console.print(f"  • 'storage' - {get_text('shortcut_storage')}")
-    console.print(f"  • 'security' - {get_text('shortcut_security')}")
-    console.print(f"  • 'processes' - {get_text('shortcut_processes')}")
-    console.print(f"  • 'performance' - {get_text('shortcut_performance')}")
-    console.print(f"  • 'users' - {get_text('shortcut_users')}")
-    console.print(f"  • 'updates' - {get_text('shortcut_updates')}")
-    console.print(f"  • 'logs' - {get_text('shortcut_logs')}")
-    
-    # Netzwerk-Sicherheit
-    console.print(f"\n[bold red]Netzwerk-Sicherheit:[/bold red]")
-    console.print(f"  • 'network-security' - Vollständige Netzwerk-Sicherheitsanalyse")
-    console.print(f"  • 'exposed-services' - Identifiziere exponierte Services")
-    console.print(f"  • 'port-scan' - Schneller Port-Scan")
-    console.print(f"  • 'service-test' - Service-Erreichbarkeit testen")
-    
-    # Kubernetes-Kürzel nur anzeigen, wenn Kubernetes verfügbar ist
-    if 'kubernetes_detected' in system_info and system_info['kubernetes_detected']:
-        console.print(f"\n[bold blue]Kubernetes:[/bold blue]")
-        console.print(f"  • 'k8s' - {get_text('shortcut_k8s')}")
-        console.print(f"  • 'k8s-problems' - {get_text('shortcut_k8s_problems')}")
-        console.print(f"  • 'k8s-pods' - {get_text('shortcut_k8s_pods')}")
-        console.print(f"  • 'k8s-nodes' - {get_text('shortcut_k8s_nodes')}")
-        console.print(f"  • 'k8s-resources' - {get_text('shortcut_k8s_resources')}")
-    
-    # Proxmox-Kürzel nur anzeigen, wenn Proxmox verfügbar ist
-    if 'proxmox_detected' in system_info and system_info['proxmox_detected']:
-        console.print(f"\n[bold magenta]Proxmox:[/bold magenta]")
-        console.print(f"  • 'proxmox' - {get_text('shortcut_proxmox')}")
-        console.print(f"  • 'proxmox-problems' - {get_text('shortcut_proxmox_problems')}")
-        console.print(f"  • 'proxmox-vms' - {get_text('shortcut_proxmox_vms')}")
-        console.print(f"  • 'proxmox-containers' - {get_text('shortcut_proxmox_containers')}")
-        console.print(f"  • 'proxmox-storage' - {get_text('shortcut_proxmox_storage')}")
-        console.print(f"  • 'proxmox-refresh' - Aktualisiere alle Proxmox-Daten")
-        console.print(f"  • 'proxmox-refresh vms' - Aktualisiere nur VM-Daten")
-        console.print(f"  • 'proxmox-refresh containers' - Aktualisiere nur Container-Daten")
-        console.print(f"  • 'proxmox-status' - Zeige aktuellen Cluster-Status")
-    
-    # Docker-Kürzel nur anzeigen, wenn Docker verfügbar ist
-    if 'docker_detected' in system_info and system_info['docker_detected']:
-        console.print(f"\n[bold cyan]Docker:[/bold cyan]")
-        console.print(f"  • 'docker' - Wie ist der Docker-Status und welche Container laufen?")
-        console.print(f"  • 'docker-problems' - Welche Docker-Probleme gibt es?")
-        console.print(f"  • 'docker-containers' - Welche Docker-Container laufen?")
-        console.print(f"  • 'docker-images' - Welche Docker-Images sind installiert?")
-    
-    # Mailserver-Kürzel nur anzeigen, wenn Mailserver verfügbar sind
-    if 'mailserver_detected' in system_info and system_info['mailserver_detected']:
-        console.print(f"\n[bold yellow]Mailserver:[/bold yellow]")
-        console.print(f"  • 'mailservers' - Welche Mailserver sind installiert und aktiv?")
-        
-        if 'mailcow_detected' in system_info and system_info['mailcow_detected']:
-            console.print(f"  • 'mailcow' - Wie ist der Mailcow-Status?")
-            console.print(f"  • 'mailcow-problems' - Welche Mailcow-Probleme gibt es?")
-        
-        if 'postfix_detected' in system_info and system_info['postfix_detected']:
-            console.print(f"  • 'postfix' - Wie ist der Postfix-Status?")
-            console.print(f"  • 'postfix-problems' - Welche Postfix-Probleme gibt es?")
-    
-    # Berichte und Tools
-    console.print(f"\n[bold yellow]Berichte & Tools:[/bold yellow]")
-    console.print(f"  • 'report' - {get_text('shortcut_report')}")
-    console.print(f"  • 'cache' - Zeige Cache-Status")
-    console.print(f"  • 'clear' - Lösche Cache")
+    # Verwende intelligentes Menü mit numerischen Kürzeln
+    intelligent_menu = create_intelligent_menu(shortcuts)
+    console.print(intelligent_menu)
     
     # Navigation
     console.print(f"\n[bold cyan]Navigation:[/bold cyan]")
@@ -4067,6 +4002,192 @@ def save_system_report(report_content: str, system_info: Dict[str, Any]) -> str:
         raise Exception(f"Fehler beim Speichern des Berichts: {e}")
 
 
+def get_shortcuts() -> Dict[str, Any]:
+    """
+    Gibt die zentralen Shortcuts-Definitionen zurück.
+    Diese Funktion stellt sicher, dass alle Teile der Anwendung die gleichen Shortcuts verwenden.
+    """
+    # Verwende direkte Übersetzungen ohne i18n-Abhängigkeit
+    shortcuts = {
+        'services': {
+            'question': 'Wie ist der Status der System-Services?',
+            'complex': False,
+            'cache_key': 'services_status'
+        },
+        'storage': {
+            'question': 'Wie ist der Speicherplatz-Status?',
+            'complex': False,
+            'cache_key': 'storage_status'
+        },
+        'security': {
+            'question': 'Wie ist der Sicherheitsstatus des Systems?',
+            'complex': True,
+            'cache_key': 'security_analysis'
+        },
+        'processes': {
+            'question': 'Welche Prozesse laufen auf dem System?',
+            'complex': False,
+            'cache_key': 'top_processes'
+        },
+        'performance': {
+            'question': 'Wie ist die System-Performance?',
+            'complex': False,
+            'cache_key': 'performance_status'
+        },
+        'users': {
+            'question': 'Welche Benutzer sind aktiv?',
+            'complex': False,
+            'cache_key': 'active_users'
+        },
+        'updates': {
+            'question': 'Gibt es verfügbare System-Updates?',
+            'complex': False,
+            'cache_key': 'system_updates'
+        },
+        'logs': {
+            'question': 'Analysiere die System-Logs',
+            'complex': True,
+            'cache_key': 'log_analysis'
+        },
+        'k8s': {
+            'question': 'Wie ist der Kubernetes-Cluster-Status?',
+            'complex': False,
+            'cache_key': 'k8s_status'
+        },
+        'k8s-problems': {
+            'question': 'Welche Probleme gibt es im Kubernetes-Cluster?',
+            'complex': True,
+            'cache_key': 'k8s_problems'
+        },
+        'k8s-pods': {
+            'question': 'Welche Kubernetes-Pods laufen?',
+            'complex': False,
+            'cache_key': 'k8s_pods'
+        },
+        'k8s-nodes': {
+            'question': 'Wie ist der Status der Kubernetes-Nodes?',
+            'complex': False,
+            'cache_key': 'k8s_nodes'
+        },
+        'k8s-resources': {
+            'question': 'Welche Kubernetes-Ressourcen sind verfügbar?',
+            'complex': False,
+            'cache_key': 'k8s_resources'
+        },
+        'proxmox': {
+            'question': 'Wie ist der Status des Proxmox-Clusters?',
+            'complex': False,
+            'cache_key': 'proxmox_status'
+        },
+        'proxmox-problems': {
+            'question': 'Welche Probleme gibt es im Proxmox-Cluster?',
+            'complex': True,
+            'cache_key': 'proxmox-problems'
+        },
+        'proxmox-vms': {
+            'question': 'Welche VMs laufen auf Proxmox?',
+            'complex': False,
+            'cache_key': 'proxmox-vms'
+        },
+        'proxmox-containers': {
+            'question': 'Welche Container laufen auf Proxmox?',
+            'complex': False,
+            'cache_key': 'proxmox-containers'
+        },
+        'proxmox-storage': {
+            'question': 'Wie ist der Speicherplatz-Status im Proxmox-Cluster?',
+            'complex': False,
+            'cache_key': 'proxmox-storage'
+        },
+        'docker': {
+            'question': 'Wie ist der Docker-Status und welche Container laufen?',
+            'complex': False,
+            'cache_key': 'docker_status'
+        },
+        'docker-problems': {
+            'question': 'Welche Docker-Probleme gibt es?',
+            'complex': True,
+            'cache_key': 'docker_problems'
+        },
+        'docker-containers': {
+            'question': 'Welche Docker-Container laufen?',
+            'complex': False,
+            'cache_key': 'docker_containers'
+        },
+        'docker-images': {
+            'question': 'Welche Docker-Images sind verfügbar?',
+            'complex': False,
+            'cache_key': 'docker_images'
+        },
+        'mailservers': {
+            'question': 'Wie ist der Status der Mailserver?',
+            'complex': False,
+            'cache_key': 'mailservers_status'
+        },
+        'mailcow': {
+            'question': 'Wie ist der Status von Mailcow?',
+            'complex': False,
+            'cache_key': 'mailcow_status'
+        },
+        'mailcow-problems': {
+            'question': 'Welche Probleme gibt es mit Mailcow?',
+            'complex': True,
+            'cache_key': 'mailcow_problems'
+        },
+        'postfix': {
+            'question': 'Wie ist der Status von Postfix?',
+            'complex': False,
+            'cache_key': 'postfix_status'
+        },
+        'postfix-problems': {
+            'question': 'Welche Probleme gibt es mit Postfix?',
+            'complex': True,
+            'cache_key': 'postfix_problems'
+        },
+        'network-security': {
+            'question': 'Führe eine Netzwerk-Sicherheitsanalyse durch',
+            'complex': True,
+            'cache_key': 'network_security'
+        },
+        'exposed-services': {
+            'question': 'Analysiere exponierte Services',
+            'complex': False,
+            'cache_key': 'exposed_services'
+        },
+        'port-scan': {
+            'question': 'Führe einen Port-Scan durch',
+            'complex': False,
+            'cache_key': 'port_scan'
+        },
+        'service-test': {
+            'question': 'Teste Service-Erreichbarkeit',
+            'complex': False,
+            'cache_key': 'service_test'
+        },
+        'report': {
+            'question': 'Erstelle einen System-Report',
+            'complex': True,
+            'cache_key': 'system_report'
+        },
+        'cache': {
+            'question': 'Analysiere Cache-Status',
+            'complex': False,
+            'cache_key': 'cache_status'
+        },
+        'clear': {
+            'question': 'Bereinige Cache',
+            'complex': False,
+            'cache_key': 'clear_cache'
+        },
+    }
+    
+    return shortcuts
+    
+    # Verwende die zentrale Shortcuts-Definition
+    shortcuts = get_shortcuts()
+    
+    return shortcuts
+
 def get_available_models() -> List[Dict[str, Any]]:
     """Hole verfügbare Ollama-Modelle und deren Details."""
     import requests
@@ -4607,6 +4728,12 @@ def create_intelligent_menu(shortcuts: Dict) -> str:
             ('m4', 'postfix'),
             ('m5', 'postfix-problems')
         ],
+        'network-security': [
+            ('n1', 'network-security'),
+            ('n2', 'exposed-services'),
+            ('n3', 'port-scan'),
+            ('n4', 'service-test')
+        ],
         'tools': [
             ('t1', 'report'),
             ('t2', 'cache'),
@@ -4629,6 +4756,8 @@ def create_intelligent_menu(shortcuts: Dict) -> str:
             menu_parts.append(f"\n[bold cyan]Docker:[/bold cyan]")
         elif category == 'mailservers':
             menu_parts.append(f"\n[bold yellow]Mailserver:[/bold yellow]")
+        elif category == 'network-security':
+            menu_parts.append(f"\n[bold red]Netzwerk-Sicherheit:[/bold red]")
         elif category == 'tools':
             menu_parts.append(f"\n[bold yellow]Berichte & Tools:[/bold yellow]")
         
@@ -4687,6 +4816,11 @@ def interpolate_user_input_to_shortcut(user_input: str, shortcuts: Dict) -> Opti
         'm3': 'mailcow-problems',
         'm4': 'postfix',
         'm5': 'postfix-problems',
+        # Netzwerk-Sicherheit
+        'n1': 'network-security',
+        'n2': 'exposed-services',
+        'n3': 'port-scan',
+        'n4': 'service-test',
         # Tools
         't1': 'report',
         't2': 'cache',
@@ -4754,8 +4888,8 @@ def interpolate_user_input_to_shortcut(user_input: str, shortcuts: Dict) -> Opti
         'exponiert': 'exposed-services',
         'erreichbar': 'exposed-services',
         'reachable': 'exposed-services',
-        'service': 'service-test',
-        'services': 'service-test',
+        'service-test': 'service-test',
+        'service-tests': 'service-test',
         'test': 'service-test',
         'telnet': 'service-test',
         'netcat': 'service-test',
@@ -4773,6 +4907,11 @@ def interpolate_user_input_to_shortcut(user_input: str, shortcuts: Dict) -> Opti
                 # Debug: Shortcut nicht gefunden
                 if hasattr(console, 'debug_mode') and console.debug_mode:
                     console.print(f"[dim]🔍 Debug: Keyword '{keyword}' gefunden, aber Shortcut '{shortcut}' nicht in shortcuts: {list(shortcuts.keys())}[/dim]")
+    
+    # Prüfe exakte Übereinstimmung zuerst
+    if user_input.lower() in shortcuts:
+        _interpolation_cache[user_input] = user_input.lower()
+        return user_input.lower()
     
     # Verwende schnelles Modell für Intent-Erkennung
     try:

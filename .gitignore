@@ -51,4 +51,14 @@ Thumbs.db
 system_reports/
 
 # Network security analysis results (temporary)
-network_security_analysis_*.json 
+network_security_analysis_*.json
+
+# Test reports and temporary test files
+*test_report*.json
+*test_report*.txt
+*_test_report_*.json
+*_test_report_*.txt
+real_source_test_report_*.json
+full_menu_test_report_*.json
+real_menu_test_report_*.json
+menu_test_report_*.json 

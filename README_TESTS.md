@@ -1,197 +1,191 @@
-# 🧪 Automatisierte Tests für macOS Log-Analyser
+# Test-Dokumentation
 
 ## Übersicht
 
-Das Projekt verfügt über ein umfassendes automatisiertes Test-System, das die Funktionalität des Chat-Systems und die Erkennung von Unsinn in Antworten überprüft.
+Dieses Projekt enthält Tests, die ausschließlich **echte Sourcecode-Funktionen** verwenden und dem **DRY-Prinzip** (Don't Repeat Yourself) folgen. Alle Tests importieren und testen die originalen Funktionen aus dem Sourcecode, ohne Code zu kopieren.
 
-## 📋 Test-Suite Komponenten
+## Test-Philosophie
 
-### 1. **test_chat_system_automated.py**
-Haupttest-Suite für das Chat-System:
-- ✅ **Context-Filtering**: Testet, ob Netzwerk-Sicherheitsdaten korrekt gefiltert werden
-- ✅ **Shortcut-Interpolation**: Testet numerische Kürzel (s1, d1, m1, etc.)
-- ✅ **Prompt-Generierung**: Testet kontextsensitive Prompt-Erstellung
-- ✅ **Menü-Generierung**: Testet intelligente Menü-Erstellung
-- ✅ **Unsinn-Erkennung**: Testet Erkennung von irrelevanten Antworten
-- ✅ **Automatische Korrektur**: Testet automatische Korrektur von Unsinn
-- ✅ **Integrationstests**: Testet vollständige Workflows
+- **DRY-Prinzip**: Keine Code-Duplikation in Tests
+- **Echte Integration**: Tests verwenden nur originale Sourcecode-Funktionen
+- **Automatisierung**: Vollständig automatisierte Testläufe
+- **Plausibilität**: Tests prüfen auch die Qualität der Antworten
 
-### 2. **test_nonsense_detection.py**
-Spezialisierte Tests für Unsinn-Erkennung:
-- ✅ **Docker-Unsinn-Erkennung**: Erkennt falsche Docker-Antworten
-- ✅ **Mailserver-Unsinn-Erkennung**: Erkennt falsche Mailserver-Antworten
-- ✅ **Netzwerk-Unsinn-Erkennung**: Erkennt falsche Netzwerk-Antworten
-- ✅ **Context-bewusste Korrektur**: Korrigiert basierend auf System-Konfiguration
-- ✅ **Edge Cases**: Testet Grenzfälle und Fehlerbehandlung
+## Verbliebene Tests
 
-### 3. **run_all_tests.py**
-Umfassender Test-Runner:
-- 🚀 Führt alle Tests automatisch aus
-- 📊 Erstellt detaillierte Test-Berichte
-- 💾 Speichert Berichte mit Timestamp
-- ⏱️ Misst Test-Dauer und Erfolgsrate
+### 1. `test_menu_automation_real_source.py` - Haupttest für Menü-Automatisierung
 
-## 🚀 Tests ausführen
+**Zweck**: Umfassender Test der Menü-Automatisierung mit echten Sourcecode-Funktionen
 
-### Einzelne Test-Suite
+**Getestete Funktionen**:
+- `get_shortcuts()` - Zentrale Shortcuts-Definition
+- `create_intelligent_menu()` - Intelligente Menü-Erstellung
+- `interpolate_user_input_to_shortcut()` - Eingabe-Interpolation
+- `query_ollama()` - Ollama-Integration
+- `detect_and_correct_nonsense()` - Unsinn-Erkennung
+
+**Test-Szenarien**:
+1. **Shortcuts-Import**: Prüft ob alle Shortcuts korrekt geladen werden
+2. **Menü-Erstellung**: Testet Menü-Generierung mit numerischen Kürzeln
+3. **Eingabe-Interpolation**: Prüft Keyword-Mapping und numerische Kürzel
+4. **Ollama-Verbindung**: Testet echte Ollama-Integration
+5. **Unsinn-Erkennung**: Prüft automatische Korrektur von Unsinn-Antworten
+6. **Automatisierte Menü-Tests**: Vollständige Tests mit Ollama und Plausibilitätsprüfung
+
+**Ausführung**:
 ```bash
-# Chat-System Tests
-python3 test_chat_system_automated.py
-
-# Unsinn-Erkennung Tests
-python3 test_nonsense_detection.py
+python3 test_menu_automation_real_source.py
 ```
 
-### Alle Tests zusammen
+**Erwartetes Ergebnis**: 100% Erfolgsrate mit detaillierten Fortschrittsanzeigen
+
+### 2. `test_interpolation.py` - Einfacher Interpolationstest
+
+**Zweck**: Schneller Test der Eingabe-Interpolation ohne Ollama
+
+**Getestete Funktionen**:
+- `interpolate_user_input_to_shortcut()` - Eingabe-Interpolation
+
+**Test-Szenarien**:
+- Keyword-Mapping (z.B. 'lxc' → 'proxmox-containers')
+- Numerische Kürzel
+- Nicht-interpolierbare Eingaben
+
+**Ausführung**:
 ```bash
-# Umfassender Test-Runner
-python3 run_all_tests.py
+python3 test_interpolation.py
 ```
 
-## 🔍 Unsinn-Erkennung
+### 3. `test_model_selection.py` - Modell-Auswahl-Test
 
-### Was wird erkannt?
+**Zweck**: Test der intelligenten Modell-Auswahl
 
-#### Context-Mismatches
-- **Docker-Fragen** mit Netzwerk-Sicherheits-Antworten
-- **Mailserver-Fragen** mit SSH-Service-Antworten
-- **Netzwerk-Fragen** mit Docker-Container-Antworten
+**Getestete Funktionen**:
+- `get_available_models()` - Verfügbare Modelle abrufen
+- `select_best_model()` - Intelligente Modell-Auswahl
 
-#### Generische Unsinn-Indikatoren
-- "Es gibt einen Problem"
-- "Sicherheitsrisiko LOW"
-- "SSH-Identification-String ungültig"
+**Test-Szenarien**:
+- Menü-Generierung (schnelles Modell)
+- Einfache Analyse (Standard-Modell)
+- Komplexe Analyse (leistungsstarkes Modell)
 
-### Automatische Korrektur
-
-Das System korrigiert Unsinn automatisch:
-
-#### Docker-Korrektur
-```python
-# Bei Docker-Fragen mit Netzwerk-Sicherheits-Antworten:
-Docker-Status-Analyse:
-
-Basierend auf den System-Daten:
-- Docker ist verfügbar/nicht verfügbar
-- Verwende 'docker ps' um laufende Container zu sehen
-- Verwende 'docker images' um verfügbare Images zu sehen
+**Ausführung**:
+```bash
+python3 test_model_selection.py
 ```
 
-#### Mailserver-Korrektur
-```python
-# Bei Mailserver-Fragen mit SSH-Service-Antworten:
-Mailserver-Analyse:
+### 4. `tests/test_ssh_collector.py` - SSH-Collector Unit Tests
 
-Basierend auf den System-Daten:
-- Mailserver sind verfügbar/nicht verfügbar
-- Verwende 'systemctl status postfix' für Postfix-Status
-- Verwende 'systemctl status dovecot' für Dovecot-Status
+**Zweck**: Unit Tests für SSH-Log-Collector mit Mocking
+
+**Getestete Klassen**:
+- `SSHLogCollector` - SSH-Verbindung und Log-Sammlung
+- `LinuxLogAnalyzer` - Linux-Log-Analyse
+
+**Test-Szenarien**:
+- SSH-Verbindungsaufbau (erfolgreich/fehlgeschlagen)
+- System-Informationen-Sammlung
+- Log-Sammlung und -Analyse
+- Archiv-Erstellung und Cleanup
+- Vollständiger Workflow
+
+**Ausführung**:
+```bash
+python3 -m unittest tests.test_ssh_collector
 ```
 
-## 📊 Test-Ergebnisse
+### 5. `tests/test_log_analyzer.py` - Log-Analyzer Unit Tests
 
-### Erfolgreiche Tests zeigen:
-```
-🎉 ALLE TESTS ERFOLGREICH!
+**Zweck**: Unit Tests für macOS Log-Analyzer
 
-Das System funktioniert korrekt:
-✅ Chat-System-Automatisierung
-✅ Unsinn-Erkennung und Korrektur
-✅ Context-Filtering
-✅ Shortcut-Interpolation
-✅ Prompt-Generierung
-✅ Menü-Generierung
-✅ Integrationstests
+**Getestete Klassen**:
+- `LogAnalyzer` - Hauptanalyse-Klasse
+- `LogEntry` - Log-Eintrag-Dataclass
+- `LogLevel` - Log-Level-Enum
+- `Anomaly` - Anomalie-Dataclass
 
-Das System ist bereit für den produktiven Einsatz!
-```
+**Test-Szenarien**:
+- Log-Parsing (verschiedene Formate)
+- Prioritäts-Berechnung
+- Ollama-Integration
+- Anomalie-Erkennung
+- Vollständiger Analyse-Workflow
 
-### Test-Berichte
-- Automatisch gespeichert als `test_report_YYYYMMDD_HHMMSS.txt`
-- Enthalten detaillierte Ausgaben und Fehlermeldungen
-- Zeigen Erfolgsrate und Test-Dauer
-
-## 🔧 Integration in Chat-System
-
-Die Unsinn-Erkennung ist in das Chat-System integriert:
-
-```python
-def detect_and_correct_nonsense(response: str, question: str, system_info: Dict[str, Any]) -> str:
-    """Erkennt und korrigiert Unsinn in Chat-Antworten"""
-    # Automatische Erkennung und Korrektur
-    return corrected_response
+**Ausführung**:
+```bash
+python3 -m unittest tests.test_log_analyzer
 ```
 
-### Verwendung im Chat
-```python
-# Nach jeder KI-Antwort
-corrected_response = detect_and_correct_nonsense(
-    ai_response, 
-    user_question, 
-    system_info
-)
+## Test-Ausführung
+
+### Einzelne Tests
+```bash
+# Haupttest für Menü-Automatisierung
+python3 test_menu_automation_real_source.py
+
+# Schnelle Interpolation-Tests
+python3 test_interpolation.py
+python3 test_model_selection.py
+
+# Unit Tests
+python3 -m unittest tests.test_ssh_collector
+python3 -m unittest tests.test_log_analyzer
 ```
 
-## 🎯 Test-Coverage
+### Alle Tests ausführen
+```bash
+# Alle Unit Tests
+python3 -m unittest discover tests
 
-### Abgedeckte Funktionalitäten:
-- ✅ **Shortcut-System**: Numerische Kürzel und Interpolation
-- ✅ **Context-Filtering**: Netzwerk-Sicherheitsdaten-Filterung
-- ✅ **Prompt-Generierung**: Kontextsensitive Prompts
-- ✅ **Menü-System**: Intelligente Menü-Erstellung
-- ✅ **Unsinn-Erkennung**: Automatische Erkennung von Irrelevanz
-- ✅ **Automatische Korrektur**: Context-bewusste Korrekturen
-- ✅ **Integration**: Vollständige Workflow-Tests
-
-### Edge Cases:
-- ✅ Leere Antworten
-- ✅ Unbekannte Fragen
-- ✅ Verschiedene System-Konfigurationen
-- ✅ Timeout-Behandlung
-- ✅ Fehlerbehandlung
-
-## 🛠️ Erweiterte Tests
-
-### Neue Tests hinzufügen:
-1. Test-Klasse in `test_chat_system_automated.py` erweitern
-2. Test-Methode mit `test_` Prefix hinzufügen
-3. Assertions für erwartetes Verhalten schreiben
-
-### Beispiel:
-```python
-def test_new_feature(self):
-    """Test: Neue Funktionalität"""
-    print("\n🔍 Test: Neue Funktionalität")
-    
-    # Test-Logik
-    result = some_function()
-    
-    # Assertions
-    self.assertEqual(result, expected_value)
-    self.assertIn("expected_text", result)
-    
-    print("✅ Neue Funktionalität funktioniert")
+# Haupttest + Unit Tests
+python3 test_menu_automation_real_source.py && python3 -m unittest discover tests
 ```
 
-## 📈 Monitoring
+## Test-Ergebnisse
 
-### Test-Metriken:
-- **Erfolgsrate**: 100% bei allen Tests
-- **Ausführungszeit**: ~2-3 Sekunden für alle Tests
-- **Coverage**: Vollständige Abdeckung aller Hauptfunktionen
+### Erfolgskriterien
+- **100% Erfolgsrate** bei allen Tests
+- **Keine Code-Duplikation** in Tests
+- **Echte Sourcecode-Integration** - Tests verwenden originale Funktionen
+- **Automatisierte Plausibilitätsprüfung** bei Ollama-Antworten
 
-### Kontinuierliche Verbesserung:
-- Tests werden bei jeder Änderung ausgeführt
-- Neue Features werden automatisch getestet
-- Unsinn-Erkennung wird kontinuierlich verbessert
+### Beispiel-Output
+```
+[21:51:37] INFO: === STARTE MENÜ-AUTOMATISIERUNGSTESTS MIT ECHTEN SOURCECODE-FUNKTIONEN ===
+[21:51:37] INFO: ✓ Shortcuts-Import: ERFOLGREICH
+[21:51:37] INFO: ✓ Menü-Erstellung: ERFOLGREICH
+[21:51:37] INFO: ✓ Eingabe-Interpolation: ERFOLGREICH
+[21:51:37] INFO: ✓ Ollama-Verbindung: ERFOLGREICH
+[21:51:37] INFO: ✓ Unsinn-Erkennung: ERFOLGREICH
+[21:51:37] INFO: ✓ Automatisierte Menü-Tests: ERFOLGREICH
+[21:51:37] INFO: 🎉 ALLE TESTS ERFOLGREICH!
+[21:51:37] INFO: Erfolgsrate: 100.0%
+```
 
-## 🎉 Fazit
+## Wartung
 
-Das automatisierte Test-System stellt sicher, dass:
-- ✅ Alle Funktionen korrekt arbeiten
-- ✅ Unsinn in Antworten erkannt und korrigiert wird
-- ✅ Context-Filtering ordnungsgemäß funktioniert
-- ✅ Shortcuts und Menüs korrekt erstellt werden
-- ✅ Integration zwischen allen Komponenten funktioniert
+### Neue Tests hinzufügen
+1. **DRY-Prinzip befolgen**: Nur echte Sourcecode-Funktionen importieren
+2. **Keine Code-Duplikation**: Funktionen nicht nachbauen
+3. **Dokumentation**: Test-Zweck und getestete Funktionen dokumentieren
 
-**Das System ist produktionsreif und bereit für den Einsatz!** 🚀 
+### Tests aktualisieren
+- Bei Änderungen an Sourcecode-Funktionen Tests entsprechend anpassen
+- Neue Funktionen in bestehende Tests integrieren
+- Plausibilitätsprüfungen bei Bedarf erweitern
+
+## Entfernte Tests
+
+Folgende Tests wurden entfernt, da sie dem DRY-Prinzip nicht folgten:
+- Tests mit kopiertem Sourcecode
+- Tests mit nachgebauten Funktionen
+- Tests ohne echte Sourcecode-Integration
+- Automatisch generierte Test-Reports
+
+## Fazit
+
+Die verbliebenen Tests folgen dem DRY-Prinzip und testen ausschließlich echte Sourcecode-Funktionen. Sie bieten:
+- **Zuverlässige Qualitätssicherung**
+- **Echte Integrationstests**
+- **Automatisierte Plausibilitätsprüfung**
+- **Wartbare Test-Struktur** 
