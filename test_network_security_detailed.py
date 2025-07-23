@@ -124,13 +124,7 @@ def test_network_security_detailed(host: str, username: str, key_file: str = Non
             internal_ports = list(service_mapping.keys())
             
             if internal_ports:
-                # Konvertiere IP-Adressen zu der erwarteten Format
-                formatted_ip_addresses = []
-                for ip in all_ip_addresses:
-                    if isinstance(ip, str):
-                        formatted_ip_addresses.append({'ip': ip, 'interface': 'unknown', 'type': 'unknown'})
-                    else:
-                        formatted_ip_addresses.append(ip)
+                # Verwende IP-Adressen direkt als Strings
                 console.print(f"[dim]Teste {len(all_ip_addresses)} IP-Adressen auf {len(internal_ports)} Ports...[/dim]")
                 
                 with Progress(
@@ -142,7 +136,7 @@ def test_network_security_detailed(host: str, username: str, key_file: str = Non
                 ) as progress:
                     task = progress.add_task("Teste externe Erreichbarkeit...", total=len(all_ip_addresses) * len(internal_ports))
                     
-                    external_tests = collector.test_external_accessibility(formatted_ip_addresses, internal_ports)
+                    external_tests = collector.test_external_accessibility(all_ip_addresses, internal_ports)
                     progress.update(task, completed=True)
                 
                 # Zeige externe Test-Ergebnisse
@@ -151,6 +145,8 @@ def test_network_security_detailed(host: str, username: str, key_file: str = Non
                     
                     # Erreichbare Ports
                     reachable_ports = external_tests.get('reachable_ports', [])
+                    reachable_hosts = external_tests.get('reachable_hosts', {})
+                    
                     if reachable_ports:
                         reachable_table = Table(title="Extern erreichbare Services", show_header=True, header_style="bold magenta")
                         reachable_table.add_column("IP", style="cyan", width=20)
@@ -158,13 +154,18 @@ def test_network_security_detailed(host: str, username: str, key_file: str = Non
                         reachable_table.add_column("Service", style="yellow", width=20)
                         reachable_table.add_column("Banner", style="white", width=30)
                         
-                        for port_info in reachable_ports:
-                            reachable_table.add_row(
-                                port_info.get('ip', 'Unbekannt'),
-                                str(port_info.get('port', 'Unbekannt')),
-                                port_info.get('service', 'Unbekannt'),
-                                port_info.get('banner', '')[:30]
-                            )
+                        # Zeige erreichbare Ports für jeden Host
+                        for host_ip, host_ports in reachable_hosts.items():
+                            if host_ports:
+                                for port in host_ports:
+                                    service_name = collector._identify_service_by_port(port)
+                                    banner = external_tests.get('service_versions', {}).get(port, '')[:30]
+                                    reachable_table.add_row(
+                                        host_ip,
+                                        str(port),
+                                        service_name,
+                                        banner
+                                    )
                         
                         console.print(reachable_table)
                     else:
@@ -226,17 +227,17 @@ def test_network_security_detailed(host: str, username: str, key_file: str = Non
                 exposed_services = security_assessment.get('exposed_services', [])
                 if exposed_services:
                     exposed_table = Table(title="Exponierte Services", show_header=True, header_style="bold magenta")
-                    exposed_table.add_column("IP", style="cyan", width=20)
                     exposed_table.add_column("Port", style="green", width=8)
                     exposed_table.add_column("Service", style="yellow", width=20)
                     exposed_table.add_column("Risiko", style="red", width=15)
                     
-                    for service in exposed_services:
+                    for port in exposed_services:
+                        service_name = collector._identify_service_by_port(port)
+                        risk_level = 'Medium' if port in [22, 3306, 5432] else 'Low'
                         exposed_table.add_row(
-                            service.get('ip', 'Unbekannt'),
-                            str(service.get('port', 'Unbekannt')),
-                            service.get('service', 'Unbekannt'),
-                            service.get('risk_level', 'Unbekannt')
+                            str(port),
+                            service_name,
+                            risk_level
                         )
                     
                     console.print(exposed_table)

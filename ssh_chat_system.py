@@ -1514,28 +1514,52 @@ class SSHLogCollector:
         
         try:
             # Sammle alle lauschenden Ports mit ss (modern) oder netstat (Fallback)
-            listening_ports = self.execute_remote_command('ss -tuln 2>/dev/null || netstat -tuln 2>/dev/null')
+            # Verwende -p für Prozess-Informationen
+            listening_ports = self.execute_remote_command('ss -tulpen 2>/dev/null || netstat -tulpen 2>/dev/null')
             if listening_ports:
                 services_info['listening_ports'] = listening_ports
                 
                 # Parse Ports und identifiziere Services
                 port_services = {}
-                for line in listening_ports.split('\n'):
-                    if 'LISTEN' in line or '0.0.0.0' in line or '127.0.0.1' in line:
-                        # Extrahiere Port und Interface
-                        parts = line.split()
-                        if len(parts) >= 4:
-                            address_port = parts[3]
-                            if ':' in address_port:
-                                address, port = address_port.rsplit(':', 1)
-                                try:
-                                    port_num = int(port)
-                                    port_services[port_num] = {
-                                        'address': address,
-                                        'external': address in ['0.0.0.0', '::']
-                                    }
-                                except ValueError:
-                                    continue
+                lines = listening_ports.split('\n')
+                
+                for line in lines:
+                    # Bereinige die Zeile von überschüssigen Leerzeichen
+                    line = ' '.join(line.split())
+                    
+                    if 'LISTEN' in line and 'tcp' in line:
+                        # Suche nach der Local Address:Port
+                        import re
+                        # Verbesserte Regex für verschiedene Adressformate
+                        address_port_match = re.search(r'(\S+):(\d+)\s+\S+:\*', line)
+                        if not address_port_match:
+                            # Fallback für andere Formate
+                            address_port_match = re.search(r'(\S+):(\d+)\s+0\.0\.0\.0:\*', line)
+                        if address_port_match:
+                            address = address_port_match.group(1)
+                            port_str = address_port_match.group(2)
+                            
+                            try:
+                                port_num = int(port_str)
+                                
+                                # Identifiziere Service basierend auf Port
+                                service_name = self._identify_service_by_port(port_num)
+                                
+                                # Extrahiere Prozess-Informationen falls verfügbar
+                                process_info = ""
+                                if 'users:' in line:
+                                    process_start = line.find('users:')
+                                    process_info = line[process_start:].split('ino:')[0].strip()
+                                
+                                port_services[port_num] = {
+                                    'address': address,
+                                    'external': address in ['0.0.0.0', '::', '*'],
+                                    'service': service_name,
+                                    'status': 'LISTEN',
+                                    'details': process_info
+                                }
+                            except ValueError:
+                                continue
                 
                 services_info['service_mapping'] = port_services
             
@@ -1642,7 +1666,20 @@ class SSHLogCollector:
         
         return services_info
     
-    def test_external_accessibility(self, target_hosts: List[str], ports: List[int]) -> Dict[str, Any]:
+    def _identify_service_by_port(self, port: int) -> str:
+        """Identifiziert Service basierend auf Port-Nummer"""
+        service_mapping = {
+            20: 'FTP-DATA', 21: 'FTP', 22: 'SSH', 23: 'TELNET', 25: 'SMTP', 53: 'DNS',
+            80: 'HTTP', 110: 'POP3', 143: 'IMAP', 443: 'HTTPS', 993: 'IMAPS', 995: 'POP3S',
+            3306: 'MySQL', 5432: 'PostgreSQL', 6379: 'Redis', 8080: 'HTTP-Alt',
+            8443: 'HTTPS-Alt', 9000: 'Web-Alt', 27017: 'MongoDB', 11211: 'Memcached',
+            111: 'RPC', 123: 'NTP', 161: 'SNMP', 389: 'LDAP', 636: 'LDAPS',
+            3128: 'Proxy', 8006: 'Proxmox-Web', 5999: 'VNC', 61000: 'VNC-Alt',
+            85: 'Proxmox-Daemon', 5405: 'Corosync', 323: 'Chrony'
+        }
+        return service_mapping.get(port, f'Unknown-{port}')
+    
+    def test_external_accessibility(self, target_hosts: List, ports: List[int]) -> Dict[str, Any]:
         """Testet externe Erreichbarkeit von allen IP-Adressen"""
         accessibility_results = {
             'reachable_ports': [],
@@ -1658,9 +1695,15 @@ class SSHLogCollector:
         try:
             # Teste jede IP-Adresse einzeln
             for target_host in target_hosts:
-                console.print(f"[dim]  Teste {target_host}...[/dim]")
-                accessibility_results['reachable_hosts'][target_host] = []
-                accessibility_results['host_port_mapping'][target_host] = {}
+                # Extrahiere IP-Adresse falls es ein Dictionary ist
+                if isinstance(target_host, dict):
+                    host_ip = target_host.get('ip', str(target_host))
+                else:
+                    host_ip = str(target_host)
+                
+                console.print(f"[dim]  Teste {host_ip}...[/dim]")
+                accessibility_results['reachable_hosts'][host_ip] = []
+                accessibility_results['host_port_mapping'][host_ip] = {}
                 
                 # Schneller Port-Scan mit nmap (falls verfügbar)
                 nmap_available = self.execute_remote_command('which nmap')
@@ -1776,12 +1819,19 @@ class SSHLogCollector:
                         external_ports.add(port)
             
             # Analysiere externe Tests
-            reachable_ports = set(external_tests.get('reachable_ports', []))
+            reachable_ports_raw = external_tests.get('reachable_ports', [])
+            # Konvertiere zu Set, falls es Dictionaries sind
+            reachable_ports = set()
+            for port in reachable_ports_raw:
+                if isinstance(port, dict):
+                    reachable_ports.add(port.get('port', port))
+                else:
+                    reachable_ports.add(port)
             reachable_hosts = external_tests.get('reachable_hosts', {})
             
             # Identifiziere exponierte Services
             exposed_services = external_ports.intersection(reachable_ports)
-            security_assessment['exposed_services'] = list(exposed_ports)
+            security_assessment['exposed_services'] = list(exposed_services)
             
             # Host-spezifische Expositionsanalyse
             host_exposure = {}
