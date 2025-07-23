@@ -1366,8 +1366,18 @@ Zusammenfassung:"""
                             chat_history.append({"role": "assistant", "content": cached_response})
                             continue
 
-            # Erstelle Chat-Prompt
-            prompt = create_chat_prompt(system_context, user_input, chat_history)
+            # Optimiere Kontextfenster für längere Konversationen
+            optimized_history = optimize_context_window(chat_history)
+            
+            # Hole relevanten Kontext für die Frage
+            context_for_question = get_context_for_question(user_input)
+            
+            # Erstelle erweiterten Chat-Prompt mit Kontext
+            if context_for_question:
+                enhanced_system_context = f"{system_context}\n\n{context_for_question}"
+                prompt = create_chat_prompt(enhanced_system_context, user_input, optimized_history)
+            else:
+                prompt = create_chat_prompt(system_context, user_input, optimized_history)
             
 
 
@@ -1429,6 +1439,9 @@ Zusammenfassung:"""
                 # Füge zur Chat-Historie hinzu
                 chat_history.append({"role": "user", "content": user_input})
                 chat_history.append({"role": "assistant", "content": response})
+
+                # Aktualisiere Konversations-Cache
+                update_conversation_cache(chat_history)
 
                 # Begrenze Historie auf letzte 10 Nachrichten
                 if len(chat_history) > 10:
@@ -1967,6 +1980,7 @@ _context_cache = {
     "system_analysis": {
         "topics": {},
         "relationships": {},
+        "conversations": {},  # Neue: Konversations-Zusammenfassungen
         "last_updated": None
     }
 }
@@ -2094,15 +2108,255 @@ def clear_context_cache(topic: str = None):
 def print_context_cache_status():
     """Zeigt Status des Context Caches an."""
     topics = _context_cache["system_analysis"]["topics"]
-    if not topics:
+    conversations = _context_cache["system_analysis"]["conversations"]
+    
+    if not topics and not conversations:
         console.print("[dim]📋 Context Cache: Leer[/dim]")
         return
     
     console.print(f"[dim]📋 Context Cache Status:[/dim]")
-    for topic, subtopics in topics.items():
-        console.print(f"[dim]  • {topic}: {len(subtopics)} Unterbereiche[/dim]")
-        for subtopic in subtopics.keys():
-            console.print(f"[dim]    - {subtopic}[/dim]")
+    
+    # Zeige Topics
+    if topics:
+        console.print(f"[dim]📁 Topics:[/dim]")
+        for topic, subtopics in topics.items():
+            console.print(f"[dim]  • {topic}: {len(subtopics)} Unterbereiche[/dim]")
+            for subtopic in subtopics.keys():
+                console.print(f"[dim]    - {subtopic}[/dim]")
+    
+    # Zeige Konversationen
+    if conversations:
+        console.print(f"[dim]💬 Konversationen:[/dim]")
+        for topic, convs in conversations.items():
+            console.print(f"[dim]  • {topic}: {len(convs)} Zusammenfassungen[/dim]")
+            for conv_id, conv_data in list(convs.items())[:3]:  # Zeige max. 3 pro Topic
+                summary_preview = conv_data["summary"][:50] + "..." if len(conv_data["summary"]) > 50 else conv_data["summary"]
+                console.print(f"[dim]    - {conv_id}: {summary_preview}[/dim]")
+
+def summarize_conversation(chat_history: List[Dict], topic: str = None) -> str:
+    """
+    Erstellt eine intelligente Zusammenfassung einer Konversation.
+    
+    Args:
+        chat_history: Liste der Chat-Nachrichten
+        topic: Optional - spezifisches Thema für fokussierte Zusammenfassung
+    
+    Returns:
+        Zusammenfassung der Konversation
+    """
+    if not chat_history or len(chat_history) < 4:  # Mindestens 2 Q&A-Paare
+        return None
+    
+    # Erstelle Prompt für Zusammenfassung
+    conversation_text = ""
+    for msg in chat_history[-10:]:  # Letzte 10 Nachrichten
+        role = "Benutzer" if msg["role"] == "user" else "Assistent"
+        conversation_text += f"{role}: {msg['content']}\n"
+    
+    summary_prompt = f"""Du bist ein System-Administrator. Erstelle eine präzise Zusammenfassung dieser Konversation.
+
+SPRACHE: Du MUSST auf Deutsch antworten, niemals auf Englisch.
+
+Konversation:
+{conversation_text}
+
+{f"FOKUS: Konzentriere dich auf das Thema '{topic}'" if topic else ""}
+
+Erstelle eine kurze, präzise Zusammenfassung (max. 3 Sätze) der wichtigsten Erkenntnisse und Antworten.
+Zusammenfassung:"""
+    
+    try:
+        # Verwende ein schnelles Modell für Zusammenfassungen
+        model = select_best_model(complex_analysis=False, for_menu=False)
+        summary = query_ollama(summary_prompt, model=model, complex_analysis=False)
+        
+        if summary and len(summary) > 20:
+            return summary.strip()
+        else:
+            return None
+    except Exception as e:
+        return None
+
+def cache_conversation_summary(topic: str, chat_history: List[Dict], summary: str = None):
+    """
+    Cached eine Konversations-Zusammenfassung.
+    
+    Args:
+        topic: Hauptbereich der Konversation
+        chat_history: Chat-Verlauf
+        summary: Optional - vorgegebene Zusammenfassung
+    """
+    import time
+    
+    if not summary:
+        summary = summarize_conversation(chat_history, topic)
+    
+    if not summary:
+        return
+    
+    if topic not in _context_cache["system_analysis"]["conversations"]:
+        _context_cache["system_analysis"]["conversations"][topic] = {}
+    
+    # Erstelle eindeutige ID für die Konversation
+    conversation_id = f"conv_{int(time.time())}"
+    
+    _context_cache["system_analysis"]["conversations"][topic][conversation_id] = {
+        "summary": summary,
+        "message_count": len(chat_history),
+        "timestamp": time.time(),
+        "last_messages": chat_history[-4:] if len(chat_history) >= 4 else chat_history  # Letzte 4 Nachrichten
+    }
+    
+    # Aktualisiere Zeitstempel
+    _context_cache["system_analysis"]["last_updated"] = time.time()
+    
+    # Debug-Ausgabe
+    if hasattr(console, 'debug_mode') and console.debug_mode:
+        console.print(f"[dim]🔍 Conversation Cache: {topic}.{conversation_id} gecacht[/dim]")
+
+def get_conversation_context(topic: str, max_age_hours: int = 24) -> List[str]:
+    """
+    Holt relevante Konversations-Kontexte für ein Thema.
+    
+    Args:
+        topic: Hauptbereich
+        max_age_hours: Maximales Alter der Konversationen in Stunden
+    
+    Returns:
+        Liste relevanter Konversations-Zusammenfassungen
+    """
+    import time
+    current_time = time.time()
+    max_age_seconds = max_age_hours * 3600
+    
+    contexts = []
+    
+    if topic in _context_cache["system_analysis"]["conversations"]:
+        for conv_id, conv_data in _context_cache["system_analysis"]["conversations"][topic].items():
+            # Prüfe Alter der Konversation
+            if current_time - conv_data["timestamp"] <= max_age_seconds:
+                contexts.append(conv_data["summary"])
+    
+    return contexts[:3]  # Maximal 3 relevante Kontexte
+
+def optimize_context_window(chat_history: List[Dict], max_messages: int = 20) -> List[Dict]:
+    """
+    Optimiert das Kontextfenster durch Zusammenfassung längerer Konversationen.
+    
+    Args:
+        chat_history: Aktueller Chat-Verlauf
+        max_messages: Maximale Anzahl Nachrichten vor Zusammenfassung
+    
+    Returns:
+        Optimierter Chat-Verlauf
+    """
+    if len(chat_history) <= max_messages:
+        return chat_history
+    
+    # Erstelle Zusammenfassung der älteren Nachrichten
+    older_messages = chat_history[:-max_messages//2]  # Ältere Hälfte
+    recent_messages = chat_history[-max_messages//2:]  # Neuere Hälfte
+    
+    # Bestimme Hauptthema aus den älteren Nachrichten
+    topics = []
+    for msg in older_messages:
+        if msg["role"] == "user":
+            content = msg["content"].lower()
+            if any(keyword in content for keyword in ['proxmox', 'vm', 'container']):
+                topics.append('proxmox')
+            elif any(keyword in content for keyword in ['kubernetes', 'k8s', 'pod']):
+                topics.append('kubernetes')
+            elif any(keyword in content for keyword in ['service', 'storage', 'security']):
+                topics.append('system')
+    
+    main_topic = max(set(topics), key=topics.count) if topics else 'system'
+    
+    # Erstelle Zusammenfassung
+    summary = summarize_conversation(older_messages, main_topic)
+    
+    if summary:
+        # Cache die Zusammenfassung
+        cache_conversation_summary(main_topic, older_messages, summary)
+        
+        # Erstelle optimierten Verlauf
+        optimized_history = [
+            {"role": "system", "content": f"Zusammenfassung vorheriger Konversation ({main_topic}): {summary}"}
+        ]
+        optimized_history.extend(recent_messages)
+        
+        return optimized_history
+    else:
+        # Fallback: Behalte nur die neueren Nachrichten
+        return recent_messages
+
+def get_context_for_question(question: str, topic: str = None) -> str:
+    """
+    Sammelt relevanten Kontext für eine neue Frage.
+    
+    Args:
+        question: Die neue Frage
+        topic: Optional - spezifisches Thema
+    
+    Returns:
+        Zusammengefasster Kontext für die Frage
+    """
+    contexts = []
+    
+    # Bestimme Topic aus der Frage, falls nicht gegeben
+    if not topic:
+        question_lower = question.lower()
+        if any(keyword in question_lower for keyword in ['proxmox', 'vm', 'container']):
+            topic = 'proxmox'
+        elif any(keyword in question_lower for keyword in ['kubernetes', 'k8s', 'pod']):
+            topic = 'kubernetes'
+        else:
+            topic = 'system'
+    
+    # Hole relevante Konversations-Kontexte
+    conversation_contexts = get_conversation_context(topic)
+    if conversation_contexts:
+        contexts.extend(conversation_contexts)
+    
+    # Hole verwandte Antworten aus dem Topic Cache
+    if topic in _context_cache["system_analysis"]["topics"]:
+        for subtopic, data in _context_cache["system_analysis"]["topics"][topic].items():
+            if data.get("answer"):
+                contexts.append(f"{subtopic}: {data['answer'][:100]}...")
+    
+    # Erstelle zusammengefassten Kontext
+    if contexts:
+        context_text = f"Relevanter Kontext für {topic}:\n" + "\n".join(contexts[:3])
+        return context_text
+    
+    return ""
+
+def update_conversation_cache(chat_history: List[Dict], topic: str = None):
+    """
+    Aktualisiert den Konversations-Cache basierend auf dem aktuellen Chat-Verlauf.
+    
+    Args:
+        chat_history: Aktueller Chat-Verlauf
+        topic: Optional - spezifisches Thema
+    """
+    if len(chat_history) >= 6:  # Mindestens 3 Q&A-Paare
+        # Bestimme Topic aus den letzten Nachrichten
+        if not topic:
+            recent_messages = chat_history[-6:]
+            topics = []
+            for msg in recent_messages:
+                if msg["role"] == "user":
+                    content = msg["content"].lower()
+                    if any(keyword in content for keyword in ['proxmox', 'vm', 'container']):
+                        topics.append('proxmox')
+                    elif any(keyword in content for keyword in ['kubernetes', 'k8s', 'pod']):
+                        topics.append('kubernetes')
+                    elif any(keyword in content for keyword in ['service', 'storage', 'security']):
+                        topics.append('system')
+            
+            topic = max(set(topics), key=topics.count) if topics else 'system'
+        
+        # Cache die Konversation
+        cache_conversation_summary(topic, chat_history)
 
 def create_intelligent_menu(shortcuts: Dict) -> str:
     """
