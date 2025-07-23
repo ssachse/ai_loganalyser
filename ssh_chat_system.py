@@ -1262,15 +1262,17 @@ Zusammenfassung:"""
                         shortcut_used = True
 
                         console.print(f"[dim]Verwende interpoliertes Kürzelwort: {user_input} (aus '{original_input}')[/dim]")
+                        
+                        # Debug-Ausgabe für Modell-Auswahl
+                        console.print(f"[dim]🔍 Shortcut: {interpolated_shortcut}, Complex: {complex_analysis}[/dim]")
+                        console.print(f"[dim]🔍 Verfügbare Shortcuts: {list(shortcuts.keys())}[/dim]")
+                        console.print(f"[dim]🔍 Cache Key: {cache_key}[/dim]")
+                        console.print(f"[dim]🔍 Shortcut Info: {shortcut_info}[/dim]")
+                        
                     except KeyError as e:
                         console.print(f"[red]❌ Fehler: Shortcut '{interpolated_shortcut}' nicht gefunden. Verfügbare: {list(shortcuts.keys())}[/red]")
                         console.print(f"[dim]🔍 Debug: interpolated_shortcut='{interpolated_shortcut}', user_input='{user_input_lower}'[/dim]")
                         continue
-                    
-                    # Debug-Ausgabe für Modell-Auswahl
-                    console.print(f"[dim]🔍 Shortcut: {interpolated_shortcut}, Complex: {complex_analysis}[/dim]")
-                    console.print(f"[dim]🔍 Verfügbare Shortcuts: {list(shortcuts.keys())}[/dim]")
-                    console.print(f"[dim]🔍 Cache Key: {cache_key}[/dim]")
                 
                 # Spezielle Behandlung für Systembericht
                 if original_input == 'report' or interpolated_shortcut == 'report':
@@ -1341,7 +1343,7 @@ Zusammenfassung:"""
             # Modell-Auswahl basierend auf Eingabe-Typ
             if shortcut_used:
                 # Für die eigentliche Analyse nach Shortcut: besseres Modell
-                if shortcut_info['complex']:
+                if 'shortcut_info' in locals() and shortcut_info and shortcut_info.get('complex'):
                     model = select_best_model(complex_analysis=True, for_menu=False)
                     console.print(f"[dim]🔄 Wechsle zu komplexem Modell für detaillierte Analyse...[/dim]")
                 else:
@@ -1395,10 +1397,13 @@ Zusammenfassung:"""
             break
         except Exception as e:
             console.print(f"[red]❌ Fehler im Chat: {e}[/red]")
+            console.print(f"[dim]🔍 Debug: Exception Type: {type(e).__name__}[/dim]")
+            console.print(f"[dim]🔍 Debug: Exception Args: {e.args}[/dim]")
             console.print(f"[dim]💡 Tipp: Verwenden Sie 'm' für verfügbare Kürzelwörter oder stellen Sie eine freie Frage.[/dim]")
             # Zeige verfügbare Shortcuts bei Fehlern
-            if 'shortcut' in str(e).lower():
+            if 'shortcut' in str(e).lower() or 'proxmox' in str(e).lower():
                 console.print(f"[dim]Verfügbare Shortcuts: {list(shortcuts.keys())}[/dim]")
+                console.print(f"[dim]🔍 Debug: Shortcut Error Details - interpolated_shortcut: {interpolated_shortcut if 'interpolated_shortcut' in locals() else 'N/A'}[/dim]")
             continue
 
 
