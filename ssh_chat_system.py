@@ -1234,6 +1234,13 @@ Zusammenfassung:"""
                 console.print(f"[dim]💡 Tipp: Verwenden Sie 'menu' für verfügbare Kürzelwörter oder stellen Sie eine Frage.[/dim]")
                 continue
 
+            # Intelligentes Menü anzeigen (VOR der Interpolation!)
+            if user_input.lower() in ['help', 'm', 'menu']:
+                console.print(f"[dim]🔍 Debug: Menü-Anfrage erkannt: '{user_input.lower()}'[/dim]")
+                intelligent_menu = create_intelligent_menu(shortcuts)
+                console.print(intelligent_menu)
+                continue
+
             # Prüfe auf Kürzelwörter (robustere Erkennung)
             shortcut_used = False
             original_input = user_input.lower().strip()
@@ -1323,17 +1330,10 @@ Zusammenfassung:"""
                     console.print(f"\n[bold green]🤖 {get_text('chat_ollama')}:[/bold green]")
                     console.print(response_cache[cache_key])
 
-                                    # Füge zur Chat-Historie hinzu
-                chat_history.append({"role": "user", "content": user_input})
-                chat_history.append({"role": "assistant", "content": response_cache[cache_key]})
-                continue
-
-            # Intelligentes Menü anzeigen
-            if user_input.lower() in ['help', 'm', 'menu']:
-                console.print(f"[dim]🔍 Debug: Menü-Anfrage erkannt: '{user_input.lower()}'[/dim]")
-                intelligent_menu = create_intelligent_menu(shortcuts)
-                console.print(intelligent_menu)
-                continue
+                    # Füge zur Chat-Historie hinzu
+                    chat_history.append({"role": "user", "content": user_input})
+                    chat_history.append({"role": "assistant", "content": response_cache[cache_key]})
+                    continue
 
             # Erstelle Chat-Prompt
             prompt = create_chat_prompt(system_context, user_input, chat_history)
