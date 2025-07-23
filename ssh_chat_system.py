@@ -1110,6 +1110,11 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
             'complex': False,
             'cache_key': 'proxmox_storage'
         },
+        'report': {
+            'question': get_text('shortcut_report'),
+            'complex': True,
+            'cache_key': 'system_report'
+        },
         'help': {
             'question': _('shortcut_help'),
             'complex': False,
@@ -1158,8 +1163,13 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
         'shortcut_proxmox_vms': 'Welche VMs laufen auf Proxmox?',
         'shortcut_proxmox_containers': 'Welche Container laufen auf Proxmox?',
         'shortcut_proxmox_storage': 'Wie ist der Proxmox-Speicherplatz?',
+        'shortcut_report': 'Erstelle einen detaillierten Systembericht mit Handlungsanweisungen',
         'analysis_running': 'Führe automatische System-Analyse durch...',
-        'analysis_summary': 'System-Analyse:'
+        'analysis_summary': 'System-Analyse:',
+        'report_generating': 'Generiere detaillierten Systembericht...',
+        'report_saving': 'Speichere Bericht als Markdown...',
+        'report_success': 'Bericht erfolgreich erstellt:',
+        'report_error': 'Fehler beim Erstellen des Berichts:'
     }
     
     # Verwende Übersetzungen oder Fallback
@@ -1179,6 +1189,7 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
     console.print(f"  • 'users' - {get_text('shortcut_users')}")
     console.print(f"  • 'updates' - {get_text('shortcut_updates')}")
     console.print(f"  • 'logs' - {get_text('shortcut_logs')}")
+    console.print(f"  • 'report' - {get_text('shortcut_report')}")
     
     # Kubernetes-Kürzel nur anzeigen, wenn Kubernetes verfügbar ist
     if 'kubernetes_detected' in system_info and system_info['kubernetes_detected']:
@@ -1268,7 +1279,50 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
 
                 console.print(f"[dim]Verwende: {user_input}[/dim]")
                 
-                # Prüfe Cache für Kürzelwörter
+                # Spezielle Behandlung für Systembericht
+                if user_input.lower() == 'report' or 'report' in user_input.lower():
+                    console.print(f"[dim]🔄 {get_text('report_generating')}[/dim]")
+                    
+                    # Erstelle spezialisierten Prompt für Bericht
+                    report_prompt = create_system_report_prompt(system_context)
+                    
+                    # Verwende komplexes Modell für Berichterstellung
+                    model = select_best_model(complex_analysis=True, for_menu=False)
+                    console.print(f"[dim]🔄 Wechsle zu komplexem Modell für detaillierte Berichterstellung...[/dim]")
+                    
+                    # Generiere Bericht
+                    console.print(f"[dim]🤔 {get_text('chat_thinking')}[/dim]")
+                    report_content = query_ollama(report_prompt, model=model, complex_analysis=True)
+                    
+                    if report_content:
+                        # Speichere Bericht
+                        console.print(f"[dim]💾 {get_text('report_saving')}[/dim]")
+                        try:
+                            filename = save_system_report(report_content, system_info)
+                            console.print(f"\n[bold green]✅ {get_text('report_success')}[/bold green]")
+                            console.print(f"[green]📄 {filename}[/green]")
+                            
+                            # Zeige Bericht in Chat
+                            console.print(f"\n[bold green]🤖 {get_text('chat_ollama')}:[/bold green]")
+                            console.print(report_content)
+                            
+                            # Cache die Antwort
+                            if cache_key:
+                                response_cache[cache_key] = report_content
+                            
+                            # Füge zur Chat-Historie hinzu
+                            chat_history.append({"role": "user", "content": user_input})
+                            chat_history.append({"role": "assistant", "content": report_content})
+                            continue
+                            
+                        except Exception as e:
+                            console.print(f"[red]❌ {get_text('report_error')} {e}[/red]")
+                            continue
+                    else:
+                        console.print(f"[red]❌ {get_text('chat_no_response')}[/red]")
+                        continue
+                
+                # Prüfe Cache für andere Kürzelwörter
                 if cache_key and cache_key in response_cache:
                     console.print(f"[dim]📋 {get_text('chat_using_cached')} '{user_input}'[/dim]")
                     console.print(f"\n[bold green]🤖 {get_text('chat_ollama')}:[/bold green]")
@@ -1572,6 +1626,47 @@ def create_system_context(system_info: Dict[str, Any], log_entries: List[LogEntr
     return "\n".join(context_parts)
 
 
+def create_system_report_prompt(system_context: str) -> str:
+    """Erstellt einen spezialisierten Prompt für die Systemberichterstellung"""
+    prompt = f"""Du bist ein Enterprise-Architekt & Senior IT-Consultant mit über 20 Jahren Erfahrung in Software-Engineering, Cloud- und On-Prem-Infrastrukturen, IT-Security, DevOps-Automatisierung und Change-Management.
+
+Deine Aufgabe ist es, eine bestehende Systemanalyse in umsetzbare Arbeitspakete zu übersetzen. Die Analyse enthält Informationen zu Architektur, Infrastruktur, Anforderungen, Beschränkungen, Risiken und derzeitigen Schwachstellen. Ziel ist es, daraus einen priorisierten Maßnahmen-Katalog abzuleiten, der sofort in einem Projekt-Backlog oder Aktionsplan verwendet werden kann.
+
+WICHTIGE REGELN:
+- Antworte IMMER auf Deutsch
+- Erstelle ein strukturiertes Markdown-Dokument
+- Identifiziere automatisch Engpässe, Sicherheitslücken und Unregelmäßigkeiten
+- Gib konkrete Handlungsempfehlungen mit Prioritäten
+- Verwende die bereitgestellten System-Daten als Grundlage
+
+SCHRITT-FÜR-SCHRITT-VORGANG:
+1. Analysiere die Systeminformationen und extrahiere zentrale Ziele, Komponenten, Probleme, Risiken und Abhängigkeiten
+2. Ordne alle Erkenntnisse nach Themenblöcken (Architektur, Infrastruktur, Sicherheit, Daten, Prozesse)
+3. Bewerte jede Erkenntnis nach Impact (hoch/mittel/niedrig) und Aufwand (hoch/mittel/niedrig)
+4. Leite eine umsetzungsorientierte Reihenfolge ab (Quick Wins → Mid-Term → Long-Term)
+5. Formuliere konkrete Handlungsanweisungen mit:
+   - Was ist zu tun? (konkret, messbar)
+   - Warum ist es wichtig? (Nutzen/Risikominderung)
+   - Wie wird es umgesetzt? (Tools, Methoden, Verantwortlichkeiten)
+   - Akzeptanzkriterien (Definition of Done)
+   - Abhängigkeiten/Risiken (inkl. Minderung)
+6. Gib für jedes Arbeitspaket grobe Story-Points oder Personentage sowie benötigte Skill-Profile an
+7. Erstelle einen groben Zeitplan mit logischer Reihenfolge
+8. Fasse auf max. 200 Wörtern die wichtigsten Empfehlungen, Risiken und nächsten Schritte zusammen
+
+FORMAT:
+- Markdown-Dokument mit klaren Überschriften (H2/H3)
+- Tabelle: ID | Thema | Maßnahme | Impact | Aufwand | Priorität | Abhängigkeiten | Verantwortlich | Akzeptanzkriterien
+- Verwende deutsche Fachterminologie, aber achte auf Verständlichkeit
+- Gib Code-Snippets, Shell-Befehle in Code-Blöcken an, wenn erforderlich
+
+=== SYSTEM-INFORMATIONEN ===
+{system_context}
+
+Erstelle jetzt einen detaillierten Systembericht mit Handlungsanweisungen:"""
+    
+    return prompt
+
 def create_chat_prompt(system_context: str, user_question: str, chat_history: List[Dict]) -> str:
     """Erstellt eine strukturierte Anfrage für Ollama"""
     from i18n import i18n
@@ -1643,6 +1738,43 @@ def create_chat_prompt(system_context: str, user_question: str, chat_history: Li
         prompt_parts.append("3. Concrete recommendations")
     
     return "\n".join(prompt_parts)
+
+
+def save_system_report(report_content: str, system_info: Dict[str, Any]) -> str:
+    """Speichert den Systembericht als Markdown-Datei"""
+    import os
+    from datetime import datetime
+    
+    # Erstelle Berichtsverzeichnis
+    reports_dir = "system_reports"
+    if not os.path.exists(reports_dir):
+        os.makedirs(reports_dir)
+    
+    # Generiere Dateinamen mit Timestamp
+    hostname = system_info.get('hostname', 'unknown')
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"{reports_dir}/system_report_{hostname}_{timestamp}.md"
+    
+    # Erstelle Bericht mit Header
+    report_header = f"""# Systembericht: {hostname}
+
+**Erstellt am:** {datetime.now().strftime("%d.%m.%Y um %H:%M Uhr")}
+**System:** {hostname}
+**Distribution:** {system_info.get('distro_pretty_name', system_info.get('distro_name', 'Unbekannt'))}
+**Kernel:** {system_info.get('kernel_version', 'Unbekannt')}
+
+---
+
+"""
+    
+    # Speichere Bericht
+    try:
+        with open(filename, 'w', encoding='utf-8') as f:
+            f.write(report_header)
+            f.write(report_content)
+        return filename
+    except Exception as e:
+        raise Exception(f"Fehler beim Speichern des Berichts: {e}")
 
 
 def get_available_models() -> List[Dict[str, Any]]:
