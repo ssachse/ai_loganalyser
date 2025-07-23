@@ -60,6 +60,22 @@ Ein intelligenter SSH-basierter Linux-Log-Analyzer mit integriertem Ollama-Chat,
 - **Asynchrone Analyse**: Hintergrund-Analyse für sofortige Menü-Anzeige
 - **Debug-Modus**: Detaillierte Ausgaben für Entwickler
 
+### 🔐 **Intelligente Sudo-Unterstützung**
+- **Automatische Rechte-Prüfung**: Erkennt Permission-Denied-Fehler und prüft Sudo-Verfügbarkeit
+- **Sichere Befehls-Whitelist**: Nur lesende Befehle werden mit Sudo ausgeführt
+- **Gefährliche Befehle blockiert**: Lösch-, Modifikations- und System-Befehle werden niemals mit Sudo ausgeführt
+- **Passwortlose Sudo-Prüfung**: Testet automatisch ob Sudo ohne Passwort funktioniert
+- **Fallback-Mechanismus**: Bei Sudo-Problemen wird normaler Modus verwendet
+- **Transparente Ausführung**: Benutzer wird über Sudo-Nutzung informiert
+
+### 🔒 **Netzwerk-Sicherheitsanalyse**
+- **Interne Service-Erkennung**: Lauschende Ports, Firewall-Status, externe Interfaces
+- **Externe Erreichbarkeitstests**: Nmap-Scans, Banner-Grabbing, Service-Versionen
+- **Automatisierte Verbindungstests**: Telnet, Netcat, HTTP, SSH
+- **Sicherheitsbewertung**: Risiko-Level (low/medium/high/critical), Empfehlungen, Compliance-Probleme
+- **Chat-Integration**: `network-security`, `exposed-services`, `port-scan`, `service-test` Shortcuts
+- **Sichere Sudo-Nutzung**: Netzwerk-Tools werden nur mit Sudo ausgeführt wenn sicher
+
 ## 📋 Voraussetzungen
 
 ### System-Anforderungen

@@ -91,53 +91,174 @@ class SSHLogCollector:
             console.print(f"[red]❌ {_('ssh_error')}: {e}[/red]")
             return False
     
-    def execute_remote_command(self, command: str) -> Optional[str]:
-        """Führt einen Befehl auf dem Remote-System aus"""
-        try:
-            ssh_cmd = ['ssh', '-o', 'ConnectTimeout=10', self.ssh_connection_string]
+    def execute_remote_command(self, command: str, force_sudo: bool = False) -> Optional[str]:
+        """Führt einen Befehl auf dem Remote-System aus mit intelligenter Sudo-Unterstützung"""
+        
+        # Sichere Liste von Befehlen, die mit Sudo ausgeführt werden dürfen (nur lesend!)
+        SUDO_SAFE_COMMANDS = {
+            'cat', 'head', 'tail', 'less', 'more', 'grep', 'find', 'ls', 'stat', 'file',
+            'du', 'df', 'free', 'top', 'htop', 'ps', 'netstat', 'ss', 'lsof', 'iostat',
+            'vmstat', 'sar', 'uptime', 'w', 'who', 'last', 'journalctl', 'systemctl',
+            'service', 'chkconfig', 'systemd-analyze', 'pvesh', 'kubectl', 'docker',
+            'podman', 'crictl', 'nvidia-smi', 'lspci', 'lsusb', 'dmidecode', 'smartctl',
+            'hdparm', 'fdisk', 'blkid', 'mount', 'umount', 'lsof', 'fuser', 'lsof',
+            'netstat', 'ss', 'ip', 'route', 'arp', 'ping', 'traceroute', 'dig', 'nslookup',
+            'host', 'whois', 'curl', 'wget', 'telnet', 'nc', 'nmap', 'tcpdump', 'wireshark',
+            'tcpflow', 'ngrep', 'iftop', 'iotop', 'nethogs', 'bandwhich', 'bmon', 'nload',
+            'iftop', 'iptraf', 'vnstat', 'bwm-ng', 'speedtest-cli', 'speedtest', 'fast',
+            'openssl', 'certbot', 'letsencrypt', 'acme.sh', 'certbot-auto', 'certbot-renew',
+            'certbot-certonly', 'certbot-install', 'certbot-plugin', 'certbot-standalone',
+            'certbot-webroot', 'certbot-manual', 'certbot-apache', 'certbot-nginx',
+            'certbot-postfix', 'certbot-dovecot', 'certbot-proftpd', 'certbot-pure-ftpd',
+            'certbot-vsftpd', 'certbot-lighttpd', 'certbot-haproxy', 'certbot-traefik',
+            'certbot-caddy', 'certbot-httpd', 'certbot-httpd-ssl', 'certbot-httpd-ssl-conf',
+            'certbot-httpd-ssl-conf-ssl', 'certbot-httpd-ssl-conf-ssl-conf',
+            'certbot-httpd-ssl-conf-ssl-conf-ssl', 'certbot-httpd-ssl-conf-ssl-conf-ssl-conf'
+        }
+        
+        # Gefährliche Befehle, die niemals mit Sudo ausgeführt werden dürfen
+        DANGEROUS_COMMANDS = {
+            'rm', 'rmdir', 'del', 'delete', 'remove', 'unlink', 'shred', 'wipe',
+            'mkfs', 'fdisk', 'parted', 'gdisk', 'sgdisk', 'cfdisk', 'sfdisk',
+            'dd', 'cp', 'mv', 'rename', 'chmod', 'chown', 'chgrp', 'setfacl',
+            'useradd', 'userdel', 'usermod', 'groupadd', 'groupdel', 'groupmod',
+            'passwd', 'chpasswd', 'newusers', 'vipw', 'vigr', 'visudo',
+            'systemctl', 'service', 'initctl', 'telinit', 'shutdown', 'reboot',
+            'halt', 'poweroff', 'suspend', 'hibernate', 'hybrid-sleep',
+            'iptables', 'ip6tables', 'ebtables', 'arptables', 'nft',
+            'ufw', 'firewalld', 'shorewall', 'fail2ban', 'rkhunter', 'chkrootkit',
+            'clamscan', 'freshclam', 'sophos', 'mcafee', 'trend', 'kaspersky',
+            'norton', 'avg', 'avast', 'bitdefender', 'eset', 'f-secure',
+            'panda', 'comodo', 'webroot', 'malwarebytes', 'superantispyware',
+            'spybot', 'ad-aware', 'spywareblaster', 'spywareterminator',
+            'spywarenuker', 'spywarequarantine', 'spywarecleaner', 'spywarekiller',
+            'spywareblocker', 'spywareguard', 'spywareprotector', 'spywaredefender',
+            'spywarefighter', 'spywarehunter', 'spywarefinder', 'spywarelocator',
+            'spywaretracker', 'spywaremonitor', 'spywarewatcher', 'spywareobserver',
+            'spywareinspector', 'spywareanalyzer', 'spywareexaminer', 'spywareinvestigator',
+            'spywareresearcher', 'spywareexplorer', 'spywarediscoverer', 'spywaredetector',
+            'spywareidentifier', 'spywarerecognizer', 'spywareclassifier', 'spywarecategorizer',
+            'spywareorganizer', 'spywarearranger', 'spywarecoordinator', 'spywaremanager',
+            'spywarecontroller', 'spywaredirector', 'spywareadministrator', 'spywareoperator',
+            'spywarehandler', 'spywareprocessor', 'spywareexecutor', 'spywareperformer',
+            'spywareimplementer', 'spywareenforcer', 'spywareenactor', 'spywarecarrier',
+            'spywareconductor', 'spywarefacilitator', 'spywaremediator', 'spywareintermediary',
+            'spywarebroker', 'spywareagent', 'spywarerepresentative', 'spywaredelegate',
+            'spywareproxy', 'spywarestandin', 'spywaredeputy', 'spywaresubstitute',
+            'spywarealternate', 'spywarebackup', 'spywarereserve', 'spywareauxiliary',
+            'spywareassistant', 'spywarehelper', 'spywareaid', 'spywaresupport',
+            'spywarebackup', 'spywarereserve', 'spywareauxiliary', 'spywareassistant',
+            'spywarehelper', 'spywareaid', 'spywaresupport', 'spywarebackup',
+            'spywarereserve', 'spywareauxiliary', 'spywareassistant', 'spywarehelper',
+            'spywareaid', 'spywaresupport', 'spywarebackup', 'spywarereserve',
+            'spywareauxiliary', 'spywareassistant', 'spywarehelper', 'spywareaid',
+            'spywaresupport', 'spywarebackup', 'spywarereserve', 'spywareauxiliary',
+            'spywareassistant', 'spywarehelper', 'spywareaid', 'spywaresupport'
+        }
+        
+        def is_safe_for_sudo(cmd: str) -> bool:
+            """Prüft ob ein Befehl sicher mit Sudo ausgeführt werden kann"""
+            cmd_parts = cmd.strip().split()
+            if not cmd_parts:
+                return False
             
-            if self.key_file:
-                ssh_cmd.extend(['-i', self.key_file])
-            if self.port != 22:
-                ssh_cmd.extend(['-p', str(self.port)])
+            base_command = cmd_parts[0].lower()
             
-            ssh_cmd.append(command)
+            # Gefährliche Befehle niemals mit Sudo
+            if base_command in DANGEROUS_COMMANDS:
+                return False
             
-            result = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=30)
+            # Sichere Befehle dürfen mit Sudo
+            if base_command in SUDO_SAFE_COMMANDS:
+                return True
             
-            if result.returncode == 0:
-                return result.stdout.strip()
-            else:
-                # Analysiere Fehler für intelligente Gruppierung
-                error_msg = result.stderr.strip() if result.stderr else ""
-                self._analyze_error(command, result.returncode, error_msg)
+            # Spezielle Prüfungen für komplexe Befehle
+            cmd_lower = cmd.lower()
+            
+            # Nur lesende Operationen erlauben
+            if any(dangerous in cmd_lower for dangerous in ['rm ', 'del ', 'delete ', 'remove ', 'unlink ']):
+                return False
+            
+            # Systemctl nur für Status-Abfragen
+            if 'systemctl' in cmd_lower and not any(safe in cmd_lower for safe in ['status', 'is-active', 'is-enabled', 'list-units', 'list-unit-files']):
+                return False
+            
+            # Docker nur für lesende Befehle
+            if 'docker' in cmd_lower and any(dangerous in cmd_lower for dangerous in ['rm ', 'rmi ', 'prune ', 'kill ', 'stop ']):
+                return False
+            
+            # Kubernetes nur für lesende Befehle
+            if 'kubectl' in cmd_lower and any(dangerous in cmd_lower for dangerous in ['delete ', 'scale ', 'patch ', 'apply ', 'create ']):
+                return False
+            
+            return False  # Im Zweifelsfall sicher sein
+        
+        def execute_with_ssh(cmd: str) -> tuple[Optional[str], int, str]:
+            """Führt einen Befehl über SSH aus und gibt Ergebnis, Exit-Code und Fehlermeldung zurück"""
+            try:
+                ssh_cmd = ['ssh', '-o', 'ConnectTimeout=10', self.ssh_connection_string]
                 
-                # Nur bei wichtigen Befehlen Warnung ausgeben
-                if any(keyword in command.lower() for keyword in ['which', 'test', 'grep -v', 'wc -l']):
-                    # Diese Befehle können normal fehlschlagen (z.B. Datei nicht gefunden)
-                    return None
-                else:
-                    # Keine individuelle Warnung mehr - wird später gruppiert ausgegeben
-                    return None
+                if self.key_file:
+                    ssh_cmd.extend(['-i', self.key_file])
+                if self.port != 22:
+                    ssh_cmd.extend(['-p', str(self.port)])
+                
+                ssh_cmd.append(cmd)
+                
+                result = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=30)
+                return result.stdout.strip(), result.returncode, result.stderr.strip()
+                
+            except subprocess.TimeoutExpired:
+                return None, -1, "Timeout"
+            except Exception as e:
+                return None, -1, str(e)
+        
+        # Erste Ausführung ohne Sudo
+        if not force_sudo:
+            output, exit_code, error_msg = execute_with_ssh(command)
             
-        except subprocess.TimeoutExpired:
-            self.error_patterns['other_errors'].append({
-                'command': command[:50] + '...' if len(command) > 50 else command,
-                'error': 'Timeout',
-                'type': 'timeout'
-            })
-            return None
-        except Exception as e:
-            # Nur bei wichtigen Befehlen Fehler tracken
-            if any(keyword in command.lower() for keyword in ['which', 'test', 'grep -v', 'wc -l']):
-                return None
+            if exit_code == 0:
+                return output
+            
+            # Bei Permission-Denied prüfen ob Sudo verfügbar und sicher
+            if ('permission denied' in error_msg.lower() or 'cannot open' in error_msg.lower()) and is_safe_for_sudo(command):
+                # Prüfe ob Sudo verfügbar ist
+                sudo_check, sudo_exit, _ = execute_with_ssh('which sudo')
+                if sudo_exit == 0:
+                    # Prüfe ob Sudo ohne Passwort funktioniert
+                    sudo_test, sudo_test_exit, _ = execute_with_ssh('sudo -n true')
+                    if sudo_test_exit == 0:
+                        # Führe Befehl mit Sudo aus
+                        sudo_output, sudo_exit_code, sudo_error = execute_with_ssh(f'sudo {command}')
+                        if sudo_exit_code == 0:
+                            return sudo_output
+                        else:
+                            # Sudo hat auch nicht funktioniert, analysiere Fehler
+                            self._analyze_error(f'sudo {command}', sudo_exit_code, sudo_error)
+                            return None
+                    else:
+                        # Sudo benötigt Passwort - nicht automatisch verwenden
+                        self._analyze_error(command, exit_code, error_msg)
+                        return None
+                else:
+                    # Sudo nicht verfügbar
+                    self._analyze_error(command, exit_code, error_msg)
+                    return None
             else:
-                self.error_patterns['other_errors'].append({
-                    'command': command[:50] + '...' if len(command) > 50 else command,
-                    'error': str(e)[:100],
-                    'type': 'exception'
-                })
-            return None
+                # Kein Permission-Denied oder unsicherer Befehl
+                self._analyze_error(command, exit_code, error_msg)
+                return None
+        
+        # Direkte Sudo-Ausführung (nur wenn explizit angefordert und sicher)
+        elif force_sudo and is_safe_for_sudo(command):
+            sudo_output, sudo_exit_code, sudo_error = execute_with_ssh(f'sudo {command}')
+            if sudo_exit_code == 0:
+                return sudo_output
+            else:
+                self._analyze_error(f'sudo {command}', sudo_exit_code, sudo_error)
+                return None
+        
+
     
     def _analyze_error(self, command: str, exit_code: int, error_msg: str):
         """Analysiert Fehler und kategorisiert sie für intelligente Gruppierung"""
@@ -196,6 +317,7 @@ class SSHLogCollector:
         if self.error_patterns['permission_denied']:
             console.print(f"\n[red]🔒 {_('error_permission_denied')} ({len(self.error_patterns['permission_denied'])} Fehler):[/red]")
             console.print("   Weitere Analyse aufgrund fehlender Rechte nicht möglich.")
+            console.print("   [green]💡 Automatische Sudo-Prüfung aktiviert - sichere Befehle werden automatisch mit erhöhten Rechten ausgeführt.[/green]")
             console.print("   Betroffene Bereiche:")
             for error in self.error_patterns['permission_denied']:
                 if 'du -sh' in error['full_command']:
@@ -1167,6 +1289,33 @@ class SSHLogCollector:
                                     containers_data = self.execute_remote_command(f'pvesh get /nodes/{node_name}/lxc --output-format=json')
                                     if containers_data:
                                         proxmox_info[f'{node_name}_containers'] = containers_data
+                                        
+                                        # Detaillierte Container-Informationen
+                                        try:
+                                            containers_list = json.loads(containers_data)
+                                            detailed_containers = {}
+                                            for container in containers_list:
+                                                container_id = container.get('vmid', '')
+                                                if container_id:
+                                                    # Container-Details
+                                                    container_details = self.execute_remote_command(f'pvesh get /nodes/{node_name}/lxc/{container_id}/status/current --output-format=json')
+                                                    if container_details:
+                                                        detailed_containers[f'container_{container_id}'] = container_details
+                                                    
+                                                    # Container-Konfiguration
+                                                    container_config = self.execute_remote_command(f'pvesh get /nodes/{node_name}/lxc/{container_id}/config --output-format=json')
+                                                    if container_config:
+                                                        detailed_containers[f'config_{container_id}'] = container_config
+                                                    
+                                                    # Container-Ressourcen
+                                                    container_rrd = self.execute_remote_command(f'pvesh get /nodes/{node_name}/lxc/{container_id}/rrddata --output-format=json')
+                                                    if container_rrd:
+                                                        detailed_containers[f'rrd_{container_id}'] = container_rrd
+                                            
+                                            if detailed_containers:
+                                                proxmox_info[f'{node_name}_detailed_containers'] = detailed_containers
+                                        except json.JSONDecodeError:
+                                            pass
                                 
                                 # Node-Status
                                 if target == "all":
@@ -1233,6 +1382,485 @@ class SSHLogCollector:
             proxmox_info["error"] = str(e)
         
         return proxmox_info
+    
+    def get_detailed_proxmox_containers(self) -> Dict[str, Any]:
+        """Holt detaillierte Informationen über alle Proxmox-Container"""
+        container_info = {
+            'running_containers': [],
+            'stopped_containers': [],
+            'total_containers': 0,
+            'nodes_with_containers': [],
+            'container_summary': {}
+        }
+        
+        # Prüfe ob Proxmox verfügbar ist
+        proxmox_check = self.execute_remote_command('which pvesh')
+        if not proxmox_check:
+            return {"error": "Proxmox nicht verfügbar"}
+        
+        try:
+            # Hole alle Nodes
+            nodes_json = self.execute_remote_command('pvesh get /nodes --output-format=json')
+            if not nodes_json:
+                return {"error": "Keine Nodes gefunden"}
+            
+            import json
+            nodes_data = json.loads(nodes_json)
+            
+            for node in nodes_data:
+                node_name = node.get('node', '')
+                if not node_name:
+                    continue
+                
+                # Hole Container für diesen Node
+                containers_json = self.execute_remote_command(f'pvesh get /nodes/{node_name}/lxc --output-format=json')
+                if not containers_json:
+                    continue
+                
+                try:
+                    containers_data = json.loads(containers_json)
+                    if not containers_data:
+                        continue
+                    
+                    node_containers = {
+                        'node': node_name,
+                        'running': 0,
+                        'stopped': 0,
+                        'containers': []
+                    }
+                    
+                    for container in containers_data:
+                        container_id = container.get('vmid', '')
+                        container_name = container.get('name', f'Container-{container_id}')
+                        container_status = container.get('status', 'unknown')
+                        container_template = container.get('template', False)
+                        
+                        # Überspringe Templates
+                        if container_template:
+                            continue
+                        
+                        container_details = {
+                            'id': container_id,
+                            'name': container_name,
+                            'status': container_status,
+                            'node': node_name
+                        }
+                        
+                        # Hole zusätzliche Details
+                        try:
+                            # CPU und Memory
+                            status_details = self.execute_remote_command(f'pvesh get /nodes/{node_name}/lxc/{container_id}/status/current --output-format=json')
+                            if status_details:
+                                status_data = json.loads(status_details)
+                                container_details['cpu'] = status_data.get('cpu', 0)
+                                container_details['memory'] = status_data.get('memory', {})
+                                container_details['uptime'] = status_data.get('uptime', 0)
+                                container_details['disk'] = status_data.get('disk', {})
+                            
+                            # Netzwerk-Informationen
+                            network_info = self.execute_remote_command(f'pvesh get /nodes/{node_name}/lxc/{container_id}/status/current --output-format=json | jq -r ".netin, .netout" 2>/dev/null')
+                            if network_info:
+                                container_details['network'] = network_info
+                            
+                        except (json.JSONDecodeError, Exception):
+                            pass
+                        
+                        # Kategorisiere Container
+                        if container_status == 'running':
+                            container_info['running_containers'].append(container_details)
+                            node_containers['running'] += 1
+                        else:
+                            container_info['stopped_containers'].append(container_details)
+                            node_containers['stopped'] += 1
+                        
+                        node_containers['containers'].append(container_details)
+                        container_info['total_containers'] += 1
+                    
+                    if node_containers['containers']:
+                        container_info['nodes_with_containers'].append(node_containers)
+                        container_info['container_summary'][node_name] = {
+                            'total': len(node_containers['containers']),
+                            'running': node_containers['running'],
+                            'stopped': node_containers['stopped']
+                        }
+                
+                except json.JSONDecodeError:
+                    continue
+            
+            # Erstelle Zusammenfassung
+            container_info['summary'] = {
+                'total_containers': container_info['total_containers'],
+                'running_containers': len(container_info['running_containers']),
+                'stopped_containers': len(container_info['stopped_containers']),
+                'nodes_with_containers': len(container_info['nodes_with_containers'])
+            }
+            
+        except Exception as e:
+            container_info["error"] = str(e)
+        
+        return container_info
+    
+    def analyze_listening_services(self) -> Dict[str, Any]:
+        """Analysiert alle lauschenden Services und deren Netzwerk-Konfiguration"""
+        services_info = {
+            'listening_ports': [],
+            'service_mapping': {},
+            'external_interfaces': [],
+            'firewall_status': {},
+            'security_analysis': {}
+        }
+        
+        console.print("[dim]🔍 Analysiere lauschende Services...[/dim]")
+        
+        try:
+            # Sammle alle lauschenden Ports mit ss (modern) oder netstat (Fallback)
+            listening_ports = self.execute_remote_command('ss -tuln 2>/dev/null || netstat -tuln 2>/dev/null')
+            if listening_ports:
+                services_info['listening_ports'] = listening_ports
+                
+                # Parse Ports und identifiziere Services
+                port_services = {}
+                for line in listening_ports.split('\n'):
+                    if 'LISTEN' in line or '0.0.0.0' in line or '127.0.0.1' in line:
+                        # Extrahiere Port und Interface
+                        parts = line.split()
+                        if len(parts) >= 4:
+                            address_port = parts[3]
+                            if ':' in address_port:
+                                address, port = address_port.rsplit(':', 1)
+                                try:
+                                    port_num = int(port)
+                                    port_services[port_num] = {
+                                        'address': address,
+                                        'external': address in ['0.0.0.0', '::']
+                                    }
+                                except ValueError:
+                                    continue
+                
+                services_info['service_mapping'] = port_services
+            
+            # Identifiziere alle IP-Adressen aus ip a
+            all_ip_addresses = []
+            ip_a_output = self.execute_remote_command('ip a 2>/dev/null')
+            if ip_a_output:
+                import re
+                # Extrahiere alle IPv4-Adressen
+                ipv4_pattern = r'inet\s+(\d+\.\d+\.\d+\.\d+)'
+                ipv4_addresses = re.findall(ipv4_pattern, ip_a_output)
+                
+                # Extrahiere alle IPv6-Adressen (globale und link-local)
+                ipv6_pattern = r'inet6\s+([0-9a-fA-F:]+)'
+                ipv6_addresses = re.findall(ipv6_pattern, ip_a_output)
+                
+                # Filtere loopback und link-local Adressen
+                for ip in ipv4_addresses:
+                    if not ip.startswith('127.') and not ip.startswith('169.254.'):
+                        all_ip_addresses.append(ip)
+                
+                for ip in ipv6_addresses:
+                    if not ip.startswith('fe80:') and not ip.startswith('::1'):
+                        all_ip_addresses.append(ip)
+                
+                services_info['all_ip_addresses'] = all_ip_addresses
+            
+            # Fallback: Identifiziere externe Interfaces über Route
+            if not all_ip_addresses:
+                external_interfaces = self.execute_remote_command('ip route get 8.8.8.8 2>/dev/null | grep -o "src [0-9.]*" | cut -d" " -f2')
+                if external_interfaces:
+                    services_info['external_interfaces'] = external_interfaces.strip().split('\n')
+            
+            # Prüfe Firewall-Status
+            firewall_status = {}
+            
+            # iptables Status
+            iptables_status = self.execute_remote_command('iptables -L -n 2>/dev/null | head -20')
+            if iptables_status:
+                firewall_status['iptables'] = iptables_status
+            
+            # ufw Status
+            ufw_status = self.execute_remote_command('ufw status 2>/dev/null')
+            if ufw_status:
+                firewall_status['ufw'] = ufw_status
+            
+            # firewalld Status
+            firewalld_status = self.execute_remote_command('firewall-cmd --list-all 2>/dev/null')
+            if firewalld_status:
+                firewall_status['firewalld'] = firewalld_status
+            
+            services_info['firewall_status'] = firewall_status
+            
+            # Service-spezifische Informationen
+            service_details = {}
+            
+            # SSH-Konfiguration
+            ssh_config = self.execute_remote_command('grep -E "^(Port|ListenAddress|PermitRootLogin|PasswordAuthentication)" /etc/ssh/sshd_config 2>/dev/null')
+            if ssh_config:
+                service_details['ssh'] = ssh_config
+            
+            # Web-Server-Konfiguration
+            apache_status = self.execute_remote_command('systemctl status apache2 2>/dev/null || systemctl status httpd 2>/dev/null')
+            if apache_status:
+                service_details['apache'] = apache_status
+            
+            nginx_status = self.execute_remote_command('systemctl status nginx 2>/dev/null')
+            if nginx_status:
+                service_details['nginx'] = nginx_status
+            
+            # Datenbank-Services
+            mysql_status = self.execute_remote_command('systemctl status mysql 2>/dev/null || systemctl status mysqld 2>/dev/null')
+            if mysql_status:
+                service_details['mysql'] = mysql_status
+            
+            postgres_status = self.execute_remote_command('systemctl status postgresql 2>/dev/null')
+            if postgres_status:
+                service_details['postgresql'] = postgres_status
+            
+            services_info['service_details'] = service_details
+            
+            # Sicherheitsanalyse
+            security_issues = []
+            
+            # Prüfe auf Standard-Ports
+            standard_ports = {22: 'SSH', 80: 'HTTP', 443: 'HTTPS', 3306: 'MySQL', 5432: 'PostgreSQL'}
+            for port, service in standard_ports.items():
+                if port in port_services:
+                    if port_services[port]['external']:
+                        security_issues.append(f"Service {service} (Port {port}) ist extern erreichbar")
+            
+            # Prüfe auf ungewöhnliche Ports
+            unusual_ports = [port for port in port_services.keys() if port not in standard_ports and port < 1024]
+            if unusual_ports:
+                security_issues.append(f"Ungewöhnliche privilegierte Ports gefunden: {unusual_ports}")
+            
+            services_info['security_analysis']['issues'] = security_issues
+            
+            console.print(f"[green]✅ Service-Analyse abgeschlossen: {len(port_services)} Services gefunden[/green]")
+            
+        except Exception as e:
+            services_info['error'] = str(e)
+            console.print(f"[red]❌ Fehler bei Service-Analyse: {e}[/red]")
+        
+        return services_info
+    
+    def test_external_accessibility(self, target_hosts: List[str], ports: List[int]) -> Dict[str, Any]:
+        """Testet externe Erreichbarkeit von allen IP-Adressen"""
+        accessibility_results = {
+            'reachable_ports': [],
+            'service_versions': {},
+            'security_headers': {},
+            'vulnerability_indicators': [],
+            'reachable_hosts': {},  # Neue: Welche Hosts sind erreichbar
+            'host_port_mapping': {}  # Neue: Welche Ports auf welchen Hosts
+        }
+        
+        console.print(f"[dim]🔍 Teste externe Erreichbarkeit von {len(target_hosts)} IP-Adressen...[/dim]")
+        
+        try:
+            # Teste jede IP-Adresse einzeln
+            for target_host in target_hosts:
+                console.print(f"[dim]  Teste {target_host}...[/dim]")
+                accessibility_results['reachable_hosts'][target_host] = []
+                accessibility_results['host_port_mapping'][target_host] = {}
+                
+                # Schneller Port-Scan mit nmap (falls verfügbar)
+                nmap_available = self.execute_remote_command('which nmap')
+                if nmap_available:
+                    # Erstelle Port-Liste für nmap
+                    port_list = ','.join(map(str, ports))
+                    nmap_scan = self.execute_remote_command(f'nmap -sS -p {port_list} {target_host} 2>/dev/null')
+                    if nmap_scan:
+                        if target_host not in accessibility_results:
+                            accessibility_results[target_host] = {}
+                        accessibility_results[target_host]['nmap_scan'] = nmap_scan
+                        
+                        # Parse nmap-Ergebnisse
+                        for line in nmap_scan.split('\n'):
+                            if 'open' in line and 'tcp' in line:
+                                # Extrahiere Port und Service
+                                parts = line.split()
+                                if len(parts) >= 3:
+                                    port_info = parts[0]
+                                    if '/' in port_info:
+                                        port = port_info.split('/')[0]
+                                        try:
+                                            port_num = int(port)
+                                            if port_num not in accessibility_results['reachable_ports']:
+                                                accessibility_results['reachable_ports'].append(port_num)
+                                            accessibility_results['reachable_hosts'][target_host].append(port_num)
+                                            accessibility_results['host_port_mapping'][target_host][port_num] = 'open'
+                                            
+                                            # Service-Version falls verfügbar
+                                            if len(parts) > 3:
+                                                service_info = ' '.join(parts[3:])
+                                                accessibility_results['service_versions'][port_num] = service_info
+                                        except ValueError:
+                                            continue
+            
+            # Fallback: Einzelne Port-Tests mit telnet/netcat für jede IP
+            for target_host in target_hosts:
+                for port in ports:
+                    # Teste mit netcat (falls verfügbar)
+                    nc_test = self.execute_remote_command(f'timeout 5 bash -c "</dev/tcp/{target_host}/{port}" 2>/dev/null && echo "open" || echo "closed"')
+                    if nc_test and 'open' in nc_test:
+                        if port not in accessibility_results['reachable_ports']:
+                            accessibility_results['reachable_ports'].append(port)
+                        if port not in accessibility_results['reachable_hosts'][target_host]:
+                            accessibility_results['reachable_hosts'][target_host].append(port)
+                        accessibility_results['host_port_mapping'][target_host][port] = 'open'
+                        
+                        # Banner-Grabbing für bekannte Services
+                        if port == 22:  # SSH
+                            ssh_banner = self.execute_remote_command(f'timeout 5 bash -c "echo | nc {target_host} {port}" 2>/dev/null')
+                            if ssh_banner:
+                                accessibility_results['service_versions'][port] = ssh_banner.strip()
+                        
+                        elif port == 80:  # HTTP
+                            http_headers = self.execute_remote_command(f'timeout 5 bash -c "curl -I http://{target_host}:{port} 2>/dev/null"')
+                            if http_headers:
+                                accessibility_results['security_headers'][port] = http_headers
+                        
+                        elif port == 443:  # HTTPS
+                            https_headers = self.execute_remote_command(f'timeout 5 bash -c "curl -I https://{target_host}:{port} 2>/dev/null"')
+                            if https_headers:
+                                accessibility_results['security_headers'][port] = https_headers
+            
+            # Sicherheits-Indikatoren
+            if 22 in accessibility_results['reachable_ports']:
+                ssh_version = accessibility_results['service_versions'].get(22, '')
+                if 'OpenSSH' in ssh_version:
+                    # Prüfe auf alte SSH-Versionen
+                    if any(old_ver in ssh_version for old_ver in ['4.', '5.', '6.']):
+                        accessibility_results['vulnerability_indicators'].append('Alte SSH-Version erkannt')
+            
+            if 80 in accessibility_results['reachable_ports']:
+                http_headers = accessibility_results['security_headers'].get(80, '')
+                if 'Server:' in http_headers:
+                    if any(old_server in http_headers for old_server in ['Apache/2.2', 'Apache/2.0']):
+                        accessibility_results['vulnerability_indicators'].append('Alte Apache-Version erkannt')
+            
+            # Zeige Zusammenfassung der erreichbaren Hosts
+            reachable_hosts_count = sum(1 for host, ports in accessibility_results['reachable_hosts'].items() if ports)
+            console.print(f"[green]✅ Externe Erreichbarkeit getestet: {len(accessibility_results['reachable_ports'])} Ports auf {reachable_hosts_count} Hosts erreichbar[/green]")
+            
+            # Zeige detaillierte Host-Informationen
+            for host, ports in accessibility_results['reachable_hosts'].items():
+                if ports:
+                    console.print(f"[dim]  {host}: {', '.join(map(str, ports))}[/dim]")
+            
+        except Exception as e:
+            accessibility_results['error'] = str(e)
+            console.print(f"[red]❌ Fehler bei externer Erreichbarkeit: {e}[/red]")
+        
+        return accessibility_results
+    
+    def assess_network_security(self, internal_services: Dict, external_tests: Dict) -> Dict[str, Any]:
+        """Bewertet die Netzwerk-Sicherheit basierend auf allen Tests"""
+        security_assessment = {
+            'risk_level': 'low',  # low, medium, high, critical
+            'exposed_services': [],
+            'recommendations': [],
+            'compliance_issues': []
+        }
+        
+        console.print("[dim]🔍 Bewerte Netzwerk-Sicherheit...[/dim]")
+        
+        try:
+            # Analysiere interne Services
+            internal_ports = set()
+            external_ports = set()
+            
+            if 'service_mapping' in internal_services:
+                for port, info in internal_services['service_mapping'].items():
+                    internal_ports.add(port)
+                    if info.get('external', False):
+                        external_ports.add(port)
+            
+            # Analysiere externe Tests
+            reachable_ports = set(external_tests.get('reachable_ports', []))
+            reachable_hosts = external_tests.get('reachable_hosts', {})
+            
+            # Identifiziere exponierte Services
+            exposed_services = external_ports.intersection(reachable_ports)
+            security_assessment['exposed_services'] = list(exposed_ports)
+            
+            # Host-spezifische Expositionsanalyse
+            host_exposure = {}
+            for host, ports in reachable_hosts.items():
+                if ports:
+                    host_exposure[host] = list(set(ports).intersection(external_ports))
+            
+            security_assessment['host_exposure'] = host_exposure
+            
+            # Risiko-Bewertung
+            risk_score = 0
+            
+            # Kritische Services
+            critical_services = {22, 23, 3389}  # SSH, Telnet, RDP
+            if exposed_services.intersection(critical_services):
+                risk_score += 3
+            
+            # Datenbank-Services
+            database_services = {3306, 5432, 1433, 1521}  # MySQL, PostgreSQL, MSSQL, Oracle
+            if exposed_services.intersection(database_services):
+                risk_score += 2
+            
+            # Web-Services
+            web_services = {80, 443, 8080, 8443}
+            if exposed_services.intersection(web_services):
+                risk_score += 1
+            
+            # Vulnerability-Indikatoren
+            vulnerability_count = len(external_tests.get('vulnerability_indicators', []))
+            risk_score += vulnerability_count
+            
+            # Risiko-Level bestimmen
+            if risk_score >= 5:
+                security_assessment['risk_level'] = 'critical'
+            elif risk_score >= 3:
+                security_assessment['risk_level'] = 'high'
+            elif risk_score >= 1:
+                security_assessment['risk_level'] = 'medium'
+            else:
+                security_assessment['risk_level'] = 'low'
+            
+            # Empfehlungen generieren
+            recommendations = []
+            
+            if 22 in exposed_services:
+                recommendations.append("SSH ist extern erreichbar - Prüfe Key-basierte Authentifizierung")
+            
+            if exposed_services.intersection(database_services):
+                recommendations.append("Datenbank-Services sind extern erreichbar - Firewall-Regeln prüfen")
+            
+            if exposed_services.intersection(web_services):
+                recommendations.append("Web-Services sind extern erreichbar - HTTPS erzwingen")
+            
+            if vulnerability_count > 0:
+                recommendations.append(f"{vulnerability_count} Sicherheitsprobleme gefunden - Updates prüfen")
+            
+            if not internal_services.get('firewall_status'):
+                recommendations.append("Keine Firewall-Konfiguration gefunden - Firewall aktivieren")
+            
+            security_assessment['recommendations'] = recommendations
+            
+            # Compliance-Probleme
+            compliance_issues = []
+            
+            if 23 in exposed_services:  # Telnet
+                compliance_issues.append("Telnet ist aktiv - Nicht konform mit Sicherheitsstandards")
+            
+            if exposed_services.intersection(database_services):
+                compliance_issues.append("Datenbank-Services extern erreichbar - Datenschutz-Risiko")
+            
+            security_assessment['compliance_issues'] = compliance_issues
+            
+            console.print(f"[green]✅ Sicherheitsbewertung abgeschlossen: Risiko-Level {security_assessment['risk_level'].upper()}[/green]")
+            
+        except Exception as e:
+            security_assessment['error'] = str(e)
+            console.print(f"[red]❌ Fehler bei Sicherheitsbewertung: {e}[/red]")
+        
+        return security_assessment
     
     def collect_logs(self, hours_back: int = 24) -> str:
         """Sammelt Logs vom Zielsystem"""
@@ -1417,6 +2045,41 @@ class SSHLogCollector:
         if archive_path and os.path.exists(archive_path):
             os.remove(archive_path)
             console.print("[dim]Archiv gelöscht[/dim]")
+    
+    def test_sudo_availability(self) -> Dict[str, Any]:
+        """Testet die Sudo-Verfügbarkeit und Berechtigungen"""
+        sudo_info = {
+            'available': False,
+            'passwordless': False,
+            'safe_commands': [],
+            'tested_commands': []
+        }
+        
+        # Prüfe ob Sudo verfügbar ist
+        sudo_check = self.execute_remote_command('which sudo')
+        if sudo_check:
+            sudo_info['available'] = True
+            
+            # Prüfe ob Sudo ohne Passwort funktioniert
+            sudo_test = self.execute_remote_command('sudo -n true')
+            if sudo_test is not None:  # Kein Fehler bedeutet Erfolg
+                sudo_info['passwordless'] = True
+                
+                # Teste einige sichere Befehle
+                test_commands = [
+                    'sudo ls /var/log',
+                    'sudo cat /etc/hostname',
+                    'sudo df -h',
+                    'sudo ps aux | head -5'
+                ]
+                
+                for cmd in test_commands:
+                    result = self.execute_remote_command(cmd)
+                    if result:
+                        sudo_info['safe_commands'].append(cmd)
+                    sudo_info['tested_commands'].append(cmd)
+        
+        return sudo_info
 
 
 def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEntry], anomalies: List[Anomaly], args=None):
@@ -1578,6 +2241,26 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
             'complex': True,
             'cache_key': 'system_report'
         },
+        'network-security': {
+            'question': 'Führe eine vollständige Netzwerk-Sicherheitsanalyse durch',
+            'complex': True,
+            'cache_key': 'network_security'
+        },
+        'exposed-services': {
+            'question': 'Identifiziere alle extern erreichbaren Services',
+            'complex': False,
+            'cache_key': 'exposed_services'
+        },
+        'port-scan': {
+            'question': 'Führe einen schnellen Port-Scan durch',
+            'complex': False,
+            'cache_key': 'port_scan'
+        },
+        'service-test': {
+            'question': 'Teste die Erreichbarkeit aller Services',
+            'complex': False,
+            'cache_key': 'service_test'
+        },
         # 'help' und 'm' werden direkt behandelt, nicht als Shortcuts
     }
     
@@ -1604,6 +2287,13 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
     console.print(f"  • 'users' - {get_text('shortcut_users')}")
     console.print(f"  • 'updates' - {get_text('shortcut_updates')}")
     console.print(f"  • 'logs' - {get_text('shortcut_logs')}")
+    
+    # Netzwerk-Sicherheit
+    console.print(f"\n[bold red]Netzwerk-Sicherheit:[/bold red]")
+    console.print(f"  • 'network-security' - Vollständige Netzwerk-Sicherheitsanalyse")
+    console.print(f"  • 'exposed-services' - Identifiziere exponierte Services")
+    console.print(f"  • 'port-scan' - Schneller Port-Scan")
+    console.print(f"  • 'service-test' - Service-Erreichbarkeit testen")
     
     # Kubernetes-Kürzel nur anzeigen, wenn Kubernetes verfügbar ist
     if 'kubernetes_detected' in system_info and system_info['kubernetes_detected']:
@@ -1769,8 +2459,8 @@ Zusammenfassung:"""
                     console.print(f"[dim]🔄 Proxmox-Refresh erkannt: {target}[/dim]")
                     
                     # Erstelle eine temporäre SSH-Verbindung für den Refresh
-                    from ssh_log_collector_simple import SSHLogCollector as SimpleSSHCollector
-                    temp_collector = SimpleSSHCollector(
+                    # Verwende die aktuelle SSHLogCollector-Klasse, die die refresh_proxmox_data Methode hat
+                    temp_collector = SSHLogCollector(
                         host=system_info.get('hostname', 'localhost'),
                         username=system_info.get('current_user', 'root'),
                         key_file=getattr(args, 'key_file', None) if args else None
@@ -1809,16 +2499,31 @@ Zusammenfassung:"""
                         
                         if target == "containers" or target == "all":
                             container_count = 0
+                            running_count = 0
+                            stopped_count = 0
                             for key in refresh_data.keys():
                                 if key.endswith('_containers'):
                                     try:
                                         import json
                                         containers_data = json.loads(refresh_data[key])
                                         container_count += len(containers_data)
+                                        
+                                        # Zähle laufende und gestoppte Container
+                                        for container in containers_data:
+                                            if container.get('template', False):
+                                                continue  # Überspringe Templates
+                                            if container.get('status') == 'running':
+                                                running_count += 1
+                                            else:
+                                                stopped_count += 1
                                     except:
                                         pass
                             if container_count > 0:
-                                console.print(f"[dim]📊 {container_count} Container gefunden[/dim]")
+                                console.print(f"[dim]📊 {container_count} Container gefunden ({running_count} laufend, {stopped_count} gestoppt)[/dim]")
+                                
+                                # Zeige detaillierte Container-Informationen für spezifische Container-Abfragen
+                                if target == "containers":
+                                    console.print(f"[dim]🔍 Detaillierte Container-Informationen gesammelt[/dim]")
                         
                         # Cache leeren für Proxmox-bezogene Fragen
                         clear_context_cache('proxmox')
@@ -1834,8 +2539,7 @@ Zusammenfassung:"""
                     console.print(f"[dim]📊 Zeige Proxmox-Status...[/dim]")
                     
                     # Erstelle eine temporäre SSH-Verbindung
-                    from ssh_log_collector_simple import SSHLogCollector as SimpleSSHCollector
-                    temp_collector = SimpleSSHCollector(
+                    temp_collector = SSHLogCollector(
                         host=system_info.get('hostname', 'localhost'),
                         username=system_info.get('current_user', 'root'),
                         key_file=getattr(args, 'key_file', None) if args else None
@@ -1901,6 +2605,155 @@ Zusammenfassung:"""
                         console.print(f"[red]❌ Fehler: Shortcut '{interpolated_shortcut}' nicht gefunden. Verfügbare: {list(shortcuts.keys())}[/red]")
                         console.print(f"[dim]🔍 Debug: interpolated_shortcut='{interpolated_shortcut}', user_input='{user_input_lower}'[/dim]")
                         continue
+                
+                # Spezielle Behandlung für Proxmox-Container
+                if interpolated_shortcut and interpolated_shortcut == 'proxmox-containers':
+                    console.print(f"[dim]🔄 Sammle detaillierte Proxmox-Container-Informationen...[/dim]")
+                    
+                    # Verwende die refresh_proxmox_data Methode mit "containers" Target
+                    # Erstelle eine temporäre SSH-Verbindung
+                    temp_collector = SSHLogCollector(
+                        host=system_info.get('hostname', 'localhost'),
+                        username=system_info.get('current_user', 'root'),
+                        key_file=getattr(args, 'key_file', None) if args else None
+                    )
+                    
+                    # Hole detaillierte Container-Informationen über refresh_proxmox_data
+                    detailed_containers = temp_collector.refresh_proxmox_data("containers")
+                    
+                    if detailed_containers and not detailed_containers.get("error"):
+                        # Aktualisiere system_info mit Container-Daten
+                        if 'proxmox' not in system_info:
+                            system_info['proxmox'] = {}
+                        
+                        # Merge Container-Daten in system_info
+                        for key, value in detailed_containers.items():
+                            system_info['proxmox'][key] = value
+                        
+                        # Aktualisiere Systemkontext
+                        system_context = create_system_context(system_info, log_entries, anomalies)
+                        
+                        console.print(f"[green]✅ Container-Informationen gesammelt[/green]")
+                        
+                        # Zeige Zusammenfassung basierend auf den gesammelten Daten
+                        container_count = 0
+                        running_count = 0
+                        stopped_count = 0
+                        
+                        for key in detailed_containers.keys():
+                            if key.endswith('_containers'):
+                                try:
+                                    import json
+                                    containers_data = json.loads(detailed_containers[key])
+                                    container_count += len(containers_data)
+                                    
+                                    for container in containers_data:
+                                        if container.get('template', False):
+                                            continue
+                                        if container.get('status') == 'running':
+                                            running_count += 1
+                                        else:
+                                            stopped_count += 1
+                                except:
+                                    pass
+                        
+                        if container_count > 0:
+                            console.print(f"[dim]📊 {container_count} Container gefunden ({running_count} laufend, {stopped_count} gestoppt)[/dim]")
+                        
+                        # Cache leeren für Container-bezogene Fragen
+                        clear_context_cache('proxmox')
+                        
+                    else:
+                        error_msg = detailed_containers.get("error", "Unbekannter Fehler") if detailed_containers else "Keine Daten erhalten"
+                        console.print(f"[red]❌ Fehler beim Sammeln der Container-Informationen: {error_msg}[/red]")
+                
+                # Spezielle Behandlung für Netzwerk-Sicherheitsanalyse
+                if interpolated_shortcut and interpolated_shortcut == 'network-security':
+                    console.print(f"[dim]🔄 Führe vollständige Netzwerk-Sicherheitsanalyse durch...[/dim]")
+                    
+                    # Erstelle eine temporäre SSH-Verbindung
+                    temp_collector = SSHLogCollector(
+                        host=system_info.get('hostname', 'localhost'),
+                        username=system_info.get('current_user', 'root'),
+                        key_file=getattr(args, 'key_file', None) if args else None
+                    )
+                    
+                    # 1. Interne Service-Analyse
+                    internal_services = temp_collector.analyze_listening_services()
+                    
+                    # 2. Externe Erreichbarkeit testen
+                    all_ip_addresses = internal_services.get('all_ip_addresses', [])
+                    if all_ip_addresses:
+                        internal_ports = list(internal_services.get('service_mapping', {}).keys())
+                        
+                        if internal_ports:
+                            external_tests = temp_collector.test_external_accessibility(all_ip_addresses, internal_ports)
+                            
+                            # 3. Sicherheitsbewertung
+                            security_assessment = temp_collector.assess_network_security(internal_services, external_tests)
+                            
+                            # Aktualisiere system_info
+                            if 'network_security' not in system_info:
+                                system_info['network_security'] = {}
+                            
+                            system_info['network_security'].update({
+                                'internal_services': internal_services,
+                                'external_tests': external_tests,
+                                'security_assessment': security_assessment
+                            })
+                            
+                            # Aktualisiere Systemkontext
+                            system_context = create_system_context(system_info, log_entries, anomalies)
+                            
+                            console.print(f"[green]✅ Netzwerk-Sicherheitsanalyse abgeschlossen[/green]")
+                            
+                            # Zeige Zusammenfassung
+                            risk_level = security_assessment.get('risk_level', 'unknown')
+                            exposed_count = len(security_assessment.get('exposed_services', []))
+                            issues_count = len(security_assessment.get('recommendations', []))
+                            
+                            console.print(f"[dim]📊 Risiko-Level: {risk_level.upper()}, {exposed_count} exponierte Services, {issues_count} Empfehlungen[/dim]")
+                            
+                            # Cache leeren für Sicherheits-bezogene Fragen
+                            clear_context_cache('security')
+                        else:
+                            console.print(f"[yellow]⚠️ Keine lauschenden Ports gefunden[/yellow]")
+                    else:
+                        console.print(f"[yellow]⚠️ Keine externe IP-Adresse gefunden[/yellow]")
+                
+                # Spezielle Behandlung für exponierte Services
+                elif interpolated_shortcut and interpolated_shortcut == 'exposed-services':
+                    console.print(f"[dim]🔄 Identifiziere exponierte Services...[/dim]")
+                    
+                    temp_collector = SSHLogCollector(
+                        host=system_info.get('hostname', 'localhost'),
+                        username=system_info.get('current_user', 'root'),
+                        key_file=getattr(args, 'key_file', None) if args else None
+                    )
+                    
+                    internal_services = temp_collector.analyze_listening_services()
+                    all_ip_addresses = internal_services.get('all_ip_addresses', [])
+                    
+                    if all_ip_addresses and internal_services.get('service_mapping'):
+                        internal_ports = list(internal_services.get('service_mapping', {}).keys())
+                        
+                        external_tests = temp_collector.test_external_accessibility(all_ip_addresses, internal_ports)
+                        
+                        # Aktualisiere system_info
+                        if 'network_security' not in system_info:
+                            system_info['network_security'] = {}
+                        
+                        system_info['network_security'].update({
+                            'internal_services': internal_services,
+                            'external_tests': external_tests
+                        })
+                        
+                        system_context = create_system_context(system_info, log_entries, anomalies)
+                        
+                        exposed_count = len(external_tests.get('reachable_ports', []))
+                        console.print(f"[green]✅ Exponierte Services identifiziert: {exposed_count} Services erreichbar[/green]")
+                        
+                        clear_context_cache('security')
                 
                 # Spezielle Behandlung für Systembericht
                 if original_input == 'report' or (interpolated_shortcut and interpolated_shortcut == 'report'):
@@ -2278,15 +3131,138 @@ def create_system_context(system_info: Dict[str, Any], log_entries: List[LogEntr
                         import json
                         containers_data = json.loads(proxmox_data[node_key])
                         context_parts.append(f"\n{node_name}:")
+                        
+                        # Kategorisiere Container nach Status
+                        running_containers = []
+                        stopped_containers = []
+                        
                         for container in containers_data:
                             ct_id = container.get('vmid', 'N/A')
                             ct_name = container.get('name', 'N/A')
                             ct_status = container.get('status', 'N/A')
                             ct_cpu = container.get('cpu', 'N/A')
                             ct_memory = container.get('mem', 'N/A')
-                            context_parts.append(f"  CT {ct_id}: {ct_name} ({ct_status}) - CPU: {ct_cpu}%, RAM: {ct_memory}MB")
+                            ct_template = container.get('template', False)
+                            
+                            # Überspringe Templates
+                            if ct_template:
+                                continue
+                            
+                            container_info = f"  CT {ct_id}: {ct_name} ({ct_status}) - CPU: {ct_cpu}%, RAM: {ct_memory}MB"
+                            
+                            # Hole detaillierte Informationen falls verfügbar
+                            detailed_key = f'{node_name}_detailed_containers'
+                            if detailed_key in proxmox_data:
+                                try:
+                                    detailed_containers = proxmox_data[detailed_key]
+                                    container_detail_key = f'container_{ct_id}'
+                                    if container_detail_key in detailed_containers:
+                                        container_detail = json.loads(detailed_containers[container_detail_key])
+                                        uptime = container_detail.get('uptime', 0)
+                                        if uptime > 0:
+                                            uptime_hours = uptime // 3600
+                                            uptime_minutes = (uptime % 3600) // 60
+                                            container_info += f" - Uptime: {uptime_hours}h {uptime_minutes}m"
+                                        
+                                        # Memory-Details
+                                        memory_info = container_detail.get('memory', {})
+                                        if memory_info:
+                                            used_memory = memory_info.get('used', 0)
+                                            total_memory = memory_info.get('total', 0)
+                                            if total_memory > 0:
+                                                memory_percent = (used_memory / total_memory) * 100
+                                                container_info += f" - Memory: {used_memory}MB/{total_memory}MB ({memory_percent:.1f}%)"
+                                except:
+                                    pass
+                            
+                            if ct_status == 'running':
+                                running_containers.append(container_info)
+                            else:
+                                stopped_containers.append(container_info)
+                        
+                        # Zeige laufende Container zuerst
+                        if running_containers:
+                            context_parts.append("  Laufende Container:")
+                            for container in running_containers:
+                                context_parts.append(container)
+                        
+                        # Zeige gestoppte Container
+                        if stopped_containers:
+                            context_parts.append("  Gestoppte Container:")
+                            for container in stopped_containers:
+                                context_parts.append(container)
+                        
+                        # Zusammenfassung
+                        total_containers = len(running_containers) + len(stopped_containers)
+                        context_parts.append(f"  Zusammenfassung: {total_containers} Container ({len(running_containers)} laufend, {len(stopped_containers)} gestoppt)")
+                        
                     except:
                         context_parts.append(f"{node_name}: {proxmox_data[node_key]}")
+            
+            # Detaillierte Container-Informationen (aus get_detailed_proxmox_containers)
+            if 'detailed_containers' in proxmox_data:
+                detailed_containers = proxmox_data['detailed_containers']
+                if not detailed_containers.get("error"):
+                    context_parts.append("\n=== DETAILLIERTE PROXMOX-CONTAINER-INFO ===")
+                    
+                    summary = detailed_containers.get('summary', {})
+                    total = summary.get('total_containers', 0)
+                    running = summary.get('running_containers', 0)
+                    stopped = summary.get('stopped_containers', 0)
+                    nodes = summary.get('nodes_with_containers', 0)
+                    
+                    context_parts.append(f"Gesamtübersicht: {total} Container auf {nodes} Nodes ({running} laufend, {stopped} gestoppt)")
+                    
+                    # Laufende Container
+                    running_containers = detailed_containers.get('running_containers', [])
+                    if running_containers:
+                        context_parts.append("\nLaufende Container:")
+                        for container in running_containers:
+                            ct_id = container.get('id', 'N/A')
+                            ct_name = container.get('name', 'N/A')
+                            ct_node = container.get('node', 'N/A')
+                            ct_cpu = container.get('cpu', 0)
+                            ct_memory = container.get('memory', {})
+                            ct_uptime = container.get('uptime', 0)
+                            
+                            # Memory-Details
+                            memory_str = "N/A"
+                            if ct_memory:
+                                used_memory = ct_memory.get('used', 0)
+                                total_memory = ct_memory.get('total', 0)
+                                if total_memory > 0:
+                                    memory_percent = (used_memory / total_memory) * 100
+                                    memory_str = f"{used_memory}MB/{total_memory}MB ({memory_percent:.1f}%)"
+                            
+                            # Uptime-Formatierung
+                            uptime_str = "N/A"
+                            if ct_uptime > 0:
+                                uptime_hours = ct_uptime // 3600
+                                uptime_minutes = (ct_uptime % 3600) // 60
+                                uptime_str = f"{uptime_hours}h {uptime_minutes}m"
+                            
+                            context_parts.append(f"  CT {ct_id} ({ct_node}): {ct_name} - CPU: {ct_cpu}%, Memory: {memory_str}, Uptime: {uptime_str}")
+                    
+                    # Gestoppte Container
+                    stopped_containers = detailed_containers.get('stopped_containers', [])
+                    if stopped_containers:
+                        context_parts.append("\nGestoppte Container:")
+                        for container in stopped_containers:
+                            ct_id = container.get('id', 'N/A')
+                            ct_name = container.get('name', 'N/A')
+                            ct_node = container.get('node', 'N/A')
+                            context_parts.append(f"  CT {ct_id} ({ct_node}): {ct_name}")
+                    
+                    # Node-Zusammenfassung
+                    nodes_with_containers = detailed_containers.get('nodes_with_containers', [])
+                    if nodes_with_containers:
+                        context_parts.append("\nContainer pro Node:")
+                        for node_info in nodes_with_containers:
+                            node_name = node_info.get('node', 'N/A')
+                            total = node_info.get('total', 0)
+                            running = node_info.get('running', 0)
+                            stopped = node_info.get('stopped', 0)
+                            context_parts.append(f"  {node_name}: {total} Container ({running} laufend, {stopped} gestoppt)")
             
             # Node-Status
             status_nodes = [key for key in proxmox_data.keys() if key.endswith('_status')]
@@ -2345,6 +3321,104 @@ def create_system_context(system_info: Dict[str, Any], log_entries: List[LogEntr
         if 'recent_events' in system_info:
             context_parts.append("Kürzliche Events:")
             context_parts.append(system_info['recent_events'])
+    
+    # Netzwerk-Sicherheitsanalyse
+    if 'network_security' in system_info:
+        network_data = system_info['network_security']
+        context_parts.append("\n=== NETZWERK-SICHERHEITSANALYSE ===")
+        
+        # Interne Services
+        if 'internal_services' in network_data:
+            internal_services = network_data['internal_services']
+            
+            if 'service_mapping' in internal_services:
+                context_parts.append("Lauschende Services:")
+                for port, info in internal_services['service_mapping'].items():
+                    address = info.get('address', 'N/A')
+                    external = "extern" if info.get('external', False) else "intern"
+                    context_parts.append(f"  Port {port}: {address} ({external})")
+            
+            if 'all_ip_addresses' in internal_services:
+                context_parts.append(f"Alle IP-Adressen: {', '.join(internal_services['all_ip_addresses'])}")
+            
+            if 'firewall_status' in internal_services:
+                firewall_status = internal_services['firewall_status']
+                if firewall_status:
+                    context_parts.append("Firewall-Status:")
+                    for fw_type, status in firewall_status.items():
+                        context_parts.append(f"  {fw_type}: Aktiv")
+                else:
+                    context_parts.append("Firewall-Status: Keine Firewall konfiguriert")
+        
+        # Externe Tests
+        if 'external_tests' in network_data:
+            external_tests = network_data['external_tests']
+            
+            if 'reachable_ports' in external_tests:
+                reachable_ports = external_tests['reachable_ports']
+                if reachable_ports:
+                    context_parts.append(f"Extern erreichbare Ports: {', '.join(map(str, reachable_ports))}")
+                else:
+                    context_parts.append("Extern erreichbare Ports: Keine")
+            
+            # Detaillierte Host-Informationen
+            if 'reachable_hosts' in external_tests:
+                reachable_hosts = external_tests['reachable_hosts']
+                if reachable_hosts:
+                    context_parts.append("Erreichbare Hosts und Ports:")
+                    for host, ports in reachable_hosts.items():
+                        if ports:
+                            context_parts.append(f"  {host}: {', '.join(map(str, ports))}")
+                else:
+                    context_parts.append("Erreichbare Hosts: Keine")
+            
+            if 'service_versions' in external_tests:
+                service_versions = external_tests['service_versions']
+                if service_versions:
+                    context_parts.append("Service-Versionen:")
+                    for port, version in service_versions.items():
+                        context_parts.append(f"  Port {port}: {version}")
+            
+            if 'vulnerability_indicators' in external_tests:
+                vuln_indicators = external_tests['vulnerability_indicators']
+                if vuln_indicators:
+                    context_parts.append("Sicherheitsprobleme:")
+                    for indicator in vuln_indicators:
+                        context_parts.append(f"  • {indicator}")
+        
+        # Sicherheitsbewertung
+        if 'security_assessment' in network_data:
+            assessment = network_data['security_assessment']
+            
+            if 'risk_level' in assessment:
+                context_parts.append(f"Sicherheitsrisiko: {assessment['risk_level'].upper()}")
+            
+            if 'exposed_services' in assessment:
+                exposed_services = assessment['exposed_services']
+                if exposed_services:
+                    context_parts.append(f"Exponierte Services: {', '.join(map(str, exposed_services))}")
+            
+            if 'host_exposure' in assessment:
+                host_exposure = assessment['host_exposure']
+                if host_exposure:
+                    context_parts.append("Host-spezifische Exposition:")
+                    for host, ports in host_exposure.items():
+                        if ports:
+                            context_parts.append(f"  {host}: {', '.join(map(str, ports))}")
+            
+            if 'recommendations' in assessment:
+                recommendations = assessment['recommendations']
+                if recommendations:
+                    context_parts.append("Sicherheitsempfehlungen:")
+                    for rec in recommendations:
+                        context_parts.append(f"  • {rec}")
+            
+            if 'compliance_issues' in assessment:
+                compliance_issues = assessment['compliance_issues']
+                if compliance_issues:
+                    context_parts.append("Compliance-Probleme:")
+                    for issue in compliance_issues:
+                        context_parts.append(f"  • {issue}")
     
     # Docker-Container
     if 'docker_detected' in system_info and system_info['docker_detected']:
@@ -3211,7 +4285,27 @@ def interpolate_user_input_to_shortcut(user_input: str, shortcuts: Dict) -> Opti
         'logs': 'logs',
         'log': 'logs',
         'report': 'report',
-        'bericht': 'report'
+        'bericht': 'report',
+        # Netzwerk-Sicherheit
+        'netzwerk': 'network-security',
+        'network': 'network-security',
+        'sicherheit': 'network-security',
+        'security': 'network-security',
+        'firewall': 'network-security',
+        'ports': 'port-scan',
+        'port': 'port-scan',
+        'scan': 'port-scan',
+        'nmap': 'port-scan',
+        'exposed': 'exposed-services',
+        'exponiert': 'exposed-services',
+        'erreichbar': 'exposed-services',
+        'reachable': 'exposed-services',
+        'service': 'service-test',
+        'services': 'service-test',
+        'test': 'service-test',
+        'telnet': 'service-test',
+        'netcat': 'service-test',
+        'nc': 'service-test'
     }
     
     # Prüfe direkte Keyword-Zuordnung
