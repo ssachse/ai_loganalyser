@@ -1501,8 +1501,9 @@ class SSHLogCollector:
         return container_info
     
     def analyze_listening_services(self) -> Dict[str, Any]:
-        """Analysiert alle lauschenden Services und deren Netzwerk-Konfiguration"""
+        """Analysiert alle lauschenden Services und deren Netzwerk-Konfiguration (INTERNE Analyse)"""
         services_info = {
+            'analysis_type': 'internal',
             'listening_ports': [],
             'service_mapping': {},
             'external_interfaces': [],
@@ -1679,20 +1680,28 @@ class SSHLogCollector:
         }
         return service_mapping.get(port, f'Unknown-{port}')
     
-    def test_external_accessibility(self, target_hosts: List, ports: List[int]) -> Dict[str, Any]:
-        """Testet externe Erreichbarkeit von allen IP-Adressen"""
+    def test_external_accessibility(self, target_hosts: List, ports: List[int], include_dns: bool = False) -> Dict[str, Any]:
+        """Testet externe Erreichbarkeit von allen IP-Adressen (EXTERNE Analyse)"""
         accessibility_results = {
+            'analysis_type': 'external',
             'reachable_ports': [],
             'service_versions': {},
             'security_headers': {},
             'vulnerability_indicators': [],
-            'reachable_hosts': {},  # Neue: Welche Hosts sind erreichbar
-            'host_port_mapping': {}  # Neue: Welche Ports auf welchen Hosts
+            'reachable_hosts': {},  # Welche Hosts sind erreichbar
+            'host_port_mapping': {},  # Welche Ports auf welchen Hosts
+            'dns_results': {}  # DNS-basierte Tests
         }
         
         console.print(f"[dim]🔍 Teste externe Erreichbarkeit von {len(target_hosts)} IP-Adressen...[/dim]")
         
         try:
+            # DNS-basierte Tests (optional)
+            if include_dns:
+                console.print("[dim]🔍 Führe DNS-basierte Tests durch...[/dim]")
+                dns_results = self._perform_dns_tests(target_hosts, ports)
+                accessibility_results['dns_results'] = dns_results
+            
             # Teste jede IP-Adresse einzeln
             for target_host in target_hosts:
                 # Extrahiere IP-Adresse falls es ein Dictionary ist
@@ -1796,9 +1805,78 @@ class SSHLogCollector:
         
         return accessibility_results
     
+    def _perform_dns_tests(self, target_hosts: List, ports: List[int]) -> Dict[str, Any]:
+        """Führt DNS-basierte Tests durch"""
+        dns_results = {
+            'hostname_resolution': {},
+            'reverse_dns': {},
+            'service_discovery': {},
+            'dns_zone_transfer': {}
+        }
+        
+        try:
+            for target_host in target_hosts:
+                # Extrahiere IP-Adresse falls es ein Dictionary ist
+                if isinstance(target_host, dict):
+                    host_ip = target_host.get('ip', str(target_host))
+                else:
+                    host_ip = str(target_host)
+                
+                dns_results['hostname_resolution'][host_ip] = {}
+                dns_results['reverse_dns'][host_ip] = {}
+                
+                # Reverse DNS Lookup
+                reverse_dns = self.execute_remote_command(f'host {host_ip} 2>/dev/null || nslookup {host_ip} 2>/dev/null')
+                if reverse_dns:
+                    dns_results['reverse_dns'][host_ip] = reverse_dns.strip()
+                
+                # Forward DNS Lookup (falls Hostname verfügbar)
+                if reverse_dns and 'domain name' in reverse_dns.lower():
+                    # Extrahiere Hostname aus Reverse DNS
+                    import re
+                    hostname_match = re.search(r'domain name pointer (.+)', reverse_dns, re.IGNORECASE)
+                    if hostname_match:
+                        hostname = hostname_match.group(1).rstrip('.')
+                        dns_results['hostname_resolution'][host_ip] = hostname
+                        
+                        # Teste Hostname-basierte Services
+                        for port in ports:
+                            if port in [80, 443, 8080, 8443]:  # Web-Services
+                                web_test = self.execute_remote_command(f'timeout 5 bash -c "</dev/tcp/{hostname}/{port}" 2>/dev/null && echo "open" || echo "closed"')
+                                if web_test and 'open' in web_test:
+                                    if hostname not in dns_results['service_discovery']:
+                                        dns_results['service_discovery'][hostname] = []
+                                    dns_results['service_discovery'][hostname].append(port)
+                
+                # DNS Zone Transfer Test (falls verfügbar)
+                if reverse_dns and 'domain name' in reverse_dns.lower():
+                    domain_match = re.search(r'domain name pointer .+\.(.+)', reverse_dns, re.IGNORECASE)
+                    if domain_match:
+                        domain = domain_match.group(1)
+                        zone_transfer = self.execute_remote_command(f'dig AXFR {domain} @{host_ip} 2>/dev/null')
+                        if zone_transfer and 'transfer failed' not in zone_transfer.lower():
+                            dns_results['dns_zone_transfer'][domain] = zone_transfer.strip()
+        
+        except Exception as e:
+            dns_results['error'] = str(e)
+        
+        return dns_results
+    
     def assess_network_security(self, internal_services: Dict, external_tests: Dict) -> Dict[str, Any]:
         """Bewertet die Netzwerk-Sicherheit basierend auf allen Tests"""
         security_assessment = {
+            'analysis_summary': {
+                'internal_analysis': {
+                    'total_services': 0,
+                    'external_interfaces': 0,
+                    'firewall_status': 'unknown'
+                },
+                'external_analysis': {
+                    'reachable_services': 0,
+                    'dns_tests': False,
+                    'vulnerability_indicators': 0
+                }
+            },
             'risk_level': 'low',  # low, medium, high, critical
             'exposed_services': [],
             'recommendations': [],
@@ -1811,6 +1889,23 @@ class SSHLogCollector:
             # Analysiere interne Services
             internal_ports = set()
             external_ports = set()
+            
+            # Sammle interne Analyse-Daten
+            if 'service_mapping' in internal_services:
+                security_assessment['analysis_summary']['internal_analysis']['total_services'] = len(internal_services['service_mapping'])
+                for port, info in internal_services['service_mapping'].items():
+                    internal_ports.add(port)
+                    if info.get('external', False):
+                        external_ports.add(port)
+                        security_assessment['analysis_summary']['internal_analysis']['external_interfaces'] += 1
+            
+            # Sammle externe Analyse-Daten
+            if 'reachable_ports' in external_tests:
+                security_assessment['analysis_summary']['external_analysis']['reachable_services'] = len(external_tests['reachable_ports'])
+            if 'dns_results' in external_tests:
+                security_assessment['analysis_summary']['external_analysis']['dns_tests'] = True
+            if 'vulnerability_indicators' in external_tests:
+                security_assessment['analysis_summary']['external_analysis']['vulnerability_indicators'] = len(external_tests['vulnerability_indicators'])
             
             if 'service_mapping' in internal_services:
                 for port, info in internal_services['service_mapping'].items():

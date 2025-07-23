@@ -19,7 +19,7 @@ from ssh_chat_system import SSHLogCollector
 
 console = Console()
 
-def test_network_security_detailed(host: str, username: str, key_file: str = None, port: int = 22):
+def test_network_security_detailed(host: str, username: str, key_file: str = None, port: int = 22, include_dns: bool = False):
     """Führt eine detaillierte Netzwerk-Sicherheitsanalyse durch"""
     
     console.print("[bold blue]🔒 Detaillierte Netzwerk-Sicherheitsanalyse[/bold blue]")
@@ -136,7 +136,7 @@ def test_network_security_detailed(host: str, username: str, key_file: str = Non
                 ) as progress:
                     task = progress.add_task("Teste externe Erreichbarkeit...", total=len(all_ip_addresses) * len(internal_ports))
                     
-                    external_tests = collector.test_external_accessibility(all_ip_addresses, internal_ports)
+                    external_tests = collector.test_external_accessibility(all_ip_addresses, internal_ports, include_dns)
                     progress.update(task, completed=True)
                 
                 # Zeige externe Test-Ergebnisse
@@ -329,6 +329,7 @@ def main():
     parser.add_argument('--username', help='SSH-Benutzername (falls nicht in target angegeben)')
     parser.add_argument('--key-file', help='Pfad zur SSH-Key-Datei')
     parser.add_argument('--port', type=int, default=22, help='SSH-Port (Standard: 22)')
+    parser.add_argument('--include-dns', action='store_true', help='DNS-basierte Tests einschließen')
     
     args = parser.parse_args()
     
@@ -348,7 +349,8 @@ def main():
         host=host,
         username=username,
         key_file=args.key_file,
-        port=args.port
+        port=args.port,
+        include_dns=args.include_dns
     )
     
     return 0 if success else 1

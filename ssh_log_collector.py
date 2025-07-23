@@ -806,6 +806,10 @@ def main():
     parser.add_argument('--hours', type=int, default=24, help='Anzahl Stunden zurück (Standard: 24)')
     parser.add_argument('--keep-files', action='store_true', help='Temporäre Dateien behalten')
     parser.add_argument('--output', help='Ausgabe-Datei für Ergebnisse')
+    parser.add_argument('--include-network-security', action='store_true', 
+                       help='Führt automatisch eine Netzwerk-Sicherheitsanalyse durch')
+    parser.add_argument('--include-dns', action='store_true', 
+                       help='DNS-basierte Tests in der Netzwerk-Sicherheitsanalyse einschließen')
     
     args = parser.parse_args()
     
