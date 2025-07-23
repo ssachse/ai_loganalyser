@@ -1152,10 +1152,10 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
     console.print(f"  • 'help' oder 'm' - {_('shortcut_help')}")
     console.print(f"  • 'exit', 'quit', 'q', 'bye', 'beenden' {_('chat_exit_commands')}")
     console.print("="*60)
-    console.print(f"\n[dim]💡 {_('chat_tip')}: ['q' to quit, 'm' -> Menü][/dim]")
+    console.print(f"\n[dim]💡 {_('chat_tip')} ['q' to quit, 'm' -> Menü][/dim]")
 
     # Hinweis, dass die Analyse im Hintergrund läuft
-    console.print(f"\n[dim]🤖 {_('analysis_running')} ({_('chat_tip')}: {_('chat_you')} ...)[/dim]")
+    console.print(f"\n[dim]🤖 {_('analysis_running')} ({_('chat_tip')} {_('chat_you')} ...)[/dim]")
 
     def run_initial_analysis():
         initial_analysis_prompt = create_chat_prompt(
@@ -1163,8 +1163,8 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
             "Analysiere das System und gib eine kurze Zusammenfassung der wichtigsten Punkte, Probleme und Empfehlungen.",
             []
         )
-        # Nutze ein schnelles Modell für die Initialanalyse
-        result = query_ollama(initial_analysis_prompt, model="llama2:7b", complex_analysis=False)
+        # Nutze ein verfügbares schnelles Modell für die Initialanalyse
+        result = query_ollama(initial_analysis_prompt, model=None, complex_analysis=False)
         initial_analysis_result['result'] = result
         initial_analysis_result['done'] = True
 
@@ -1226,7 +1226,7 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
 
             # Shortcut-Erkennung: immer schnelles Modell
             if shortcut_used:
-                model = "llama2:7b"
+                model = None  # Verwende automatische Modell-Auswahl für schnelle Analysen
             else:
                 # Bestimme Modell-Komplexität für freie Fragen
                 complex_analysis = any(keyword in user_input.lower() for keyword in [
@@ -1613,7 +1613,7 @@ def select_best_model(complex_analysis: bool = False) -> str:
     
     if not models:
         console.print("[yellow]⚠️  Keine Ollama-Modelle gefunden, verwende Standard[/yellow]")
-        return "llama3.2:3b"
+        return "llama2"  # Fallback auf Standard-Modell
     
     if complex_analysis:
         # Für komplexe Analysen: Große Modelle bevorzugen
@@ -1638,16 +1638,15 @@ def select_best_model(complex_analysis: bool = False) -> str:
                 console.print(f"[green]✅ Verwende Modell für {model_type}: {model['name']}[/green]")
                 return model['name']
     
-    # Fallback: Wähle das größte verfügbare Modell
-    largest_model = max(models, key=lambda x: x.get('size', 0))
-    console.print(f"[yellow]⚠️  Verwende größtes verfügbares Modell: {largest_model['name']}[/yellow]")
+    # Fallback: Wähle das erste verfügbare Modell
+    if models:
+        fallback_model = models[0]['name']
+        console.print(f"[yellow]⚠️  Verwende verfügbares Modell: {fallback_model}[/yellow]")
+        return fallback_model
     
-    # Warnung bei kleinen Modellen für komplexe Analysen
-    if complex_analysis and largest_model.get('size', 0) < 3 * 1024 * 1024 * 1024:  # < 3GB
-        console.print("[yellow]⚠️  Kleines Modell für komplexe Analyse. Empfehle größeres Modell (7B+)[/yellow]")
-        console.print("[dim]Empfohlene Modelle: llama3.2:8b, llama3.2:70b, codellama:13b[/dim]")
-    
-    return largest_model['name']
+    # Letzter Fallback
+    console.print("[red]❌ Keine Modelle verfügbar, verwende Standard[/red]")
+    return "llama2"
 
 
 def query_ollama(prompt: str, model: str = None, complex_analysis: bool = False) -> Optional[str]:
@@ -1690,8 +1689,21 @@ def query_ollama(prompt: str, model: str = None, complex_analysis: bool = False)
         if response.status_code == 200:
             result = response.json()
             return result.get('response', '').strip()
+        elif response.status_code == 404:
+            console.print(f"[red]❌ Modell '{model}' nicht gefunden. Verfügbare Modelle prüfen...[/red]")
+            # Versuche mit einem anderen Modell
+            available_models = get_available_models()
+            if available_models:
+                fallback_model = available_models[0]['name']
+                console.print(f"[yellow]⚠️  Versuche mit verfügbarem Modell: {fallback_model}[/yellow]")
+                data['model'] = fallback_model
+                response = requests.post(url, json=data, timeout=timeout)
+                if response.status_code == 200:
+                    result = response.json()
+                    return result.get('response', '').strip()
+            return None
         else:
-            console.print(f"[red]Ollama-Fehler: {response.status_code}[/red]")
+            console.print(f"[red]❌ Ollama-Fehler: {response.status_code}[/red]")
             return None
             
     except requests.exceptions.RequestException as e:
