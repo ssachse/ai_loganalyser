@@ -1166,25 +1166,17 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
         
         if menu_model:
             console.print(f"[green]⚡ Ultraschnelles Menü-Modell verfügbar: {menu_model['name']}[/green]")
-        else:
-            console.print("[blue]💡 Für ultraschnelle Menü-Erkennung empfehle ich:[/blue]")
-            console.print("[dim]   ollama pull qwen:0.5b[/dim]")
+        # qwen:0.5b ist bereits verfügbar, keine Empfehlung nötig
         
         # Zeige schnellstes Modell für normale Analysen
         sorted_models = sorted(available_models, key=lambda x: x.get('size', float('inf')))
         fastest_model = sorted_models[0]
         console.print(f"[green]✅ Schnellstes Modell für Analysen: {fastest_model['name']}[/green]")
         
-        # Empfehle bessere Modelle wenn nötig
-        if fastest_model.get('size', 0) < 1 * 1024 * 1024 * 1024:  # < 1GB
-            console.print("[blue]💡 Für bessere Antworten empfehle ich:[/blue]")
-            console.print("[dim]   ollama pull llama3.2:3b[/dim]")
-            console.print("[dim]   ollama pull mistral:7b[/dim]")
+        # Keine Empfehlungen mehr nötig, da gute Modelle bereits verfügbar sind
     else:
         console.print("[yellow]⚠️  Keine Ollama-Modelle gefunden[/yellow]")
-        console.print("[blue]💡 Empfohlene Installation:[/blue]")
-        console.print("[dim]   ollama pull qwen:0.5b (für Menü)[/dim]")
-        console.print("[dim]   ollama pull llama3.2:3b (für Analysen)[/dim]")
+        console.print("[blue]💡 Empfohlene Installation: ollama pull llama3.2:3b[/blue]")
 
     # Hinweis, dass die Analyse im Hintergrund läuft
     console.print(f"\n[dim]🤖 {_('analysis_running')} ({_('chat_tip')} {_('chat_you')} ...)[/dim]")
@@ -1681,8 +1673,6 @@ def select_best_model(complex_analysis: bool = False, for_menu: bool = False) ->
         sorted_models = sorted(models, key=lambda x: x.get('size', float('inf')))
         selected_model = sorted_models[0]
         console.print(f"[yellow]⚠️  Verwende schnellstes verfügbares Modell für Menü: {selected_model['name']}[/yellow]")
-        console.print("[blue]💡 Für ultraschnelle Menü-Erkennung empfehle ich:[/blue]")
-        console.print("[dim]   ollama pull qwen:0.5b[/dim]")
         return selected_model['name']
     
     # Sortiere Modelle nach Größe (kleinste = schnellste zuerst)
@@ -1695,31 +1685,20 @@ def select_best_model(complex_analysis: bool = False, for_menu: bool = False) ->
             selected_model = medium_models[0]
             console.print(f"[green]✅ Verwende Modell für komplexe Analyse: {selected_model['name']}[/green]")
             
-            # Empfehle bessere Modelle für komplexe Analysen
-            if selected_model.get('size', 0) < 7 * 1024 * 1024 * 1024:  # < 7GB
-                console.print("[blue]💡 Für bessere komplexe Analysen empfehle ich:[/blue]")
-                console.print("[dim]   ollama pull llama3.2:8b[/dim]")
-                console.print("[dim]   ollama pull codellama:13b[/dim]")
+                    # Keine Empfehlungen mehr nötig, da gute Modelle bereits verfügbar sind
             
             return selected_model['name']
         else:
             # Fallback auf kleinstes verfügbares Modell
             selected_model = sorted_models[0]
             console.print(f"[yellow]⚠️  Verwende kleinstes verfügbares Modell für komplexe Analyse: {selected_model['name']}[/yellow]")
-            console.print("[blue]💡 Für komplexe Analysen empfehle ich größere Modelle:[/blue]")
-            console.print("[dim]   ollama pull llama3.2:8b[/dim]")
-            console.print("[dim]   ollama pull codellama:13b[/dim]")
             return selected_model['name']
     else:
         # Für einfache Analysen: Verwende das schnellste (kleinste) Modell
         selected_model = sorted_models[0]
         console.print(f"[green]✅ Verwende schnellstes Modell: {selected_model['name']}[/green]")
         
-        # Empfehle bessere Modelle wenn das aktuelle sehr klein ist
-        if selected_model.get('size', 0) < 1 * 1024 * 1024 * 1024:  # < 1GB
-            console.print("[blue]💡 Für bessere Antworten empfehle ich:[/blue]")
-            console.print("[dim]   ollama pull llama3.2:3b[/dim]")
-            console.print("[dim]   ollama pull mistral:7b[/dim]")
+        # Keine Empfehlungen mehr nötig, da gute Modelle bereits verfügbar sind
         
         return selected_model['name']
 
@@ -1779,10 +1758,8 @@ def query_ollama(prompt: str, model: str = None, complex_analysis: bool = False)
                     result = response.json()
                     return result.get('response', '').strip()
             
-            # Wenn auch das nicht funktioniert, gib Empfehlungen
-            console.print("[blue]💡 Empfohlene Modelle installieren:[/blue]")
-            console.print("[dim]   ollama pull llama3.2:3b[/dim]")
-            console.print("[dim]   ollama pull mistral:7b[/dim]")
+            # Wenn auch das nicht funktioniert
+            console.print("[red]❌ Keine funktionierenden Modelle gefunden[/red]")
             return None
         else:
             console.print(f"[red]❌ Ollama-Fehler: {response.status_code}[/red]")

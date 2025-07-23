@@ -48,9 +48,24 @@ class I18n:
         except Exception:
             return 'en'  # Fallback auf Englisch
     
+    def _force_german_locale(self):
+        """Erzwingt deutsche Locale für gettext"""
+        try:
+            # Setze Locale explizit
+            locale.setlocale(locale.LC_ALL, 'de_DE.UTF-8')
+        except:
+            try:
+                locale.setlocale(locale.LC_ALL, 'de_DE')
+            except:
+                pass  # Fallback auf Standard
+    
     def _setup_gettext(self):
         """Richtet gettext für die aktuelle Sprache ein"""
         try:
+            # Erzwinge deutsche Locale wenn erkannt
+            if self.current_language == 'de':
+                self._force_german_locale()
+            
             # Pfad zu den Übersetzungsdateien
             locale_dir = os.path.join(os.path.dirname(__file__), 'locale')
             
