@@ -2540,10 +2540,15 @@ Zusammenfassung:"""
                     
                     # Erstelle eine temporäre SSH-Verbindung
                     temp_collector = SSHLogCollector(
-                        host=system_info.get('hostname', 'localhost'),
-                        username=system_info.get('current_user', 'root'),
+                        host=system_info.get('ssh_host', system_info.get('hostname', 'localhost')),
+                        username=system_info.get('ssh_user', system_info.get('current_user', 'root')),
                         key_file=getattr(args, 'key_file', None) if args else None
                     )
+                    
+                    # Verbinde zur temporären SSH-Verbindung
+                    if not temp_collector.connect():
+                        console.print(f"[red]❌ Fehler bei SSH-Verbindung für Proxmox-Status[/red]")
+                        continue
                     
                     # Hole aktuellen Status
                     status_data = temp_collector.refresh_proxmox_data("cluster")
@@ -2613,10 +2618,15 @@ Zusammenfassung:"""
                     # Verwende die refresh_proxmox_data Methode mit "containers" Target
                     # Erstelle eine temporäre SSH-Verbindung
                     temp_collector = SSHLogCollector(
-                        host=system_info.get('hostname', 'localhost'),
-                        username=system_info.get('current_user', 'root'),
+                        host=system_info.get('ssh_host', system_info.get('hostname', 'localhost')),
+                        username=system_info.get('ssh_user', system_info.get('current_user', 'root')),
                         key_file=getattr(args, 'key_file', None) if args else None
                     )
+                    
+                    # Verbinde zur temporären SSH-Verbindung
+                    if not temp_collector.connect():
+                        console.print(f"[red]❌ Fehler bei SSH-Verbindung für Proxmox-Analyse[/red]")
+                        continue
                     
                     # Hole detaillierte Container-Informationen über refresh_proxmox_data
                     detailed_containers = temp_collector.refresh_proxmox_data("containers")
@@ -2672,11 +2682,17 @@ Zusammenfassung:"""
                     console.print(f"[dim]🔄 Führe vollständige Netzwerk-Sicherheitsanalyse durch...[/dim]")
                     
                     # Erstelle eine temporäre SSH-Verbindung
+                    # Verwende die ursprünglichen Verbindungsdaten
                     temp_collector = SSHLogCollector(
-                        host=system_info.get('hostname', 'localhost'),
-                        username=system_info.get('current_user', 'root'),
+                        host=system_info.get('ssh_host', system_info.get('hostname', 'localhost')),
+                        username=system_info.get('ssh_user', system_info.get('current_user', 'root')),
                         key_file=getattr(args, 'key_file', None) if args else None
                     )
+                    
+                    # Verbinde zur temporären SSH-Verbindung
+                    if not temp_collector.connect():
+                        console.print(f"[red]❌ Fehler bei SSH-Verbindung für Netzwerk-Analyse[/red]")
+                        continue
                     
                     # 1. Interne Service-Analyse
                     internal_services = temp_collector.analyze_listening_services()
@@ -2726,10 +2742,15 @@ Zusammenfassung:"""
                     console.print(f"[dim]🔄 Identifiziere exponierte Services...[/dim]")
                     
                     temp_collector = SSHLogCollector(
-                        host=system_info.get('hostname', 'localhost'),
-                        username=system_info.get('current_user', 'root'),
+                        host=system_info.get('ssh_host', system_info.get('hostname', 'localhost')),
+                        username=system_info.get('ssh_user', system_info.get('current_user', 'root')),
                         key_file=getattr(args, 'key_file', None) if args else None
                     )
+                    
+                    # Verbinde zur temporären SSH-Verbindung
+                    if not temp_collector.connect():
+                        console.print(f"[red]❌ Fehler bei SSH-Verbindung für Service-Analyse[/red]")
+                        continue
                     
                     internal_services = temp_collector.analyze_listening_services()
                     all_ip_addresses = internal_services.get('all_ip_addresses', [])
@@ -4518,6 +4539,12 @@ def main():
         
         # Sammle System-Informationen
         system_info = collector.get_system_info(quick_mode=args.quick)
+        
+        # Speichere SSH-Verbindungsdaten für spätere Verwendung
+        system_info['ssh_host'] = host
+        system_info['ssh_user'] = username
+        system_info['ssh_port'] = args.port
+        system_info['ssh_key_file'] = args.key_file
         
         # Zeige Fehler-Zusammenfassung
         collector.print_error_summary()
