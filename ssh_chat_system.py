@@ -984,7 +984,7 @@ def start_interactive_chat(system_info: Dict[str, Any], log_entries: List[LogEnt
     # Chat-Loop
     while True:
         try:
-            user_input = console.input(f"\n[bold cyan]{_('chat_you')}:[/bold cyan] ").strip()
+            user_input = console.input(f"\n[bold cyan]{_('chat_you')}[/bold cyan] ").strip()
             
             # Prüfe auf Exit-Befehle
             if user_input.lower() in ['exit', 'quit', 'q', 'bye', 'beenden', 'tschüss', 'ciao']:
@@ -1244,34 +1244,70 @@ def create_system_context(system_info: Dict[str, Any], log_entries: List[LogEntr
 
 def create_chat_prompt(system_context: str, user_question: str, chat_history: List[Dict]) -> str:
     """Erstellt eine strukturierte Anfrage für Ollama"""
+    from i18n import i18n
+    
     prompt_parts = []
     
-    # System-Rolle für präzise System-Analyse
-    prompt_parts.append("Du bist ein erfahrener System-Administrator und IT-Sicherheitsexperte.")
-    prompt_parts.append("Deine Aufgabe ist es, Linux-Systeme zu analysieren und potenzielle Probleme zu identifizieren.")
-    prompt_parts.append("WICHTIGE REGELN:")
-    prompt_parts.append("- Antworte kurz, präzise und prägnant")
-    prompt_parts.append("- Identifiziere automatisch Engpässe, Sicherheitslücken und Unregelmäßigkeiten")
-    prompt_parts.append("- Warnung bei kritischen Problemen (hohe CPU/Last, wenig Speicher, Sicherheitsprobleme)")
-    prompt_parts.append("- Gib konkrete Handlungsempfehlungen")
-    prompt_parts.append("- Verwende die bereitgestellten System-Daten als Grundlage")
-    
-    # System-Kontext
-    prompt_parts.append("\n=== SYSTEM-INFORMATIONEN ===")
-    prompt_parts.append(system_context)
-    
-    # Chat-Historie (letzte 2 Einträge für Kontext)
-    if chat_history:
-        prompt_parts.append("\n=== CHAT-VERLAUF ===")
-        for entry in chat_history[-2:]:
-            prompt_parts.append(f"Benutzer: {entry['user']}")
-            prompt_parts.append(f"Du: {entry['assistant']}")
-    
-    prompt_parts.append(f"\nBenutzer-Frage: {user_question}")
-    prompt_parts.append("\nAntworte strukturiert:")
-    prompt_parts.append("1. Kurze Analyse der Frage")
-    prompt_parts.append("2. Identifizierte Probleme/Engpässe (falls vorhanden)")
-    prompt_parts.append("3. Konkrete Empfehlungen")
+    # System-Rolle für präzise System-Analyse (basierend auf aktueller Sprache)
+    if i18n.get_language() == 'de':
+        prompt_parts.append("Du bist ein erfahrener System-Administrator und IT-Sicherheitsexperte.")
+        prompt_parts.append("Deine Aufgabe ist es, Linux-Systeme zu analysieren und potenzielle Probleme zu identifizieren.")
+        prompt_parts.append("WICHTIGE REGELN:")
+        prompt_parts.append("- Antworte kurz, präzise und prägnant")
+        prompt_parts.append("- Identifiziere automatisch Engpässe, Sicherheitslücken und Unregelmäßigkeiten")
+        prompt_parts.append("- Warnung bei kritischen Problemen (hohe CPU/Last, wenig Speicher, Sicherheitsprobleme)")
+        prompt_parts.append("- Gib konkrete Handlungsempfehlungen")
+        prompt_parts.append("- Verwende die bereitgestellten System-Daten als Grundlage")
+        prompt_parts.append("- Antworte IMMER auf Deutsch")
+        
+        # System-Kontext
+        prompt_parts.append("\n=== SYSTEM-INFORMATIONEN ===")
+        prompt_parts.append(system_context)
+        
+        # Chat-Historie (letzte 2 Einträge für Kontext)
+        if chat_history:
+            prompt_parts.append("\n=== CHAT-VERLAUF ===")
+            for entry in chat_history[-2:]:
+                if entry['role'] == 'user':
+                    prompt_parts.append(f"Benutzer: {entry['content']}")
+                else:
+                    prompt_parts.append(f"Du: {entry['content']}")
+        
+        prompt_parts.append(f"\nBenutzer-Frage: {user_question}")
+        prompt_parts.append("\nAntworte strukturiert auf Deutsch:")
+        prompt_parts.append("1. Kurze Analyse der Frage")
+        prompt_parts.append("2. Identifizierte Probleme/Engpässe (falls vorhanden)")
+        prompt_parts.append("3. Konkrete Empfehlungen")
+    else:
+        # Englische Prompts
+        prompt_parts.append("You are an experienced system administrator and IT security expert.")
+        prompt_parts.append("Your task is to analyze Linux systems and identify potential problems.")
+        prompt_parts.append("IMPORTANT RULES:")
+        prompt_parts.append("- Answer briefly, precisely and concisely")
+        prompt_parts.append("- Automatically identify bottlenecks, security gaps and irregularities")
+        prompt_parts.append("- Warning for critical problems (high CPU/load, low memory, security issues)")
+        prompt_parts.append("- Provide concrete recommendations for action")
+        prompt_parts.append("- Use the provided system data as a basis")
+        prompt_parts.append("- Answer ALWAYS in English")
+        
+        # System context
+        prompt_parts.append("\n=== SYSTEM INFORMATION ===")
+        prompt_parts.append(system_context)
+        
+        # Chat history (last 2 entries for context)
+        if chat_history:
+            prompt_parts.append("\n=== CHAT HISTORY ===")
+            for entry in chat_history[-2:]:
+                if entry['role'] == 'user':
+                    prompt_parts.append(f"User: {entry['content']}")
+                else:
+                    prompt_parts.append(f"You: {entry['content']}")
+        
+        prompt_parts.append(f"\nUser Question: {user_question}")
+        prompt_parts.append("\nAnswer structured in English:")
+        prompt_parts.append("1. Brief analysis of the question")
+        prompt_parts.append("2. Identified problems/bottlenecks (if any)")
+        prompt_parts.append("3. Concrete recommendations")
     
     return "\n".join(prompt_parts)
 
