@@ -3403,6 +3403,7 @@ Zusammenfassung:"""
                 complex_analysis = shortcut_info['complex']
                 cache_key = shortcut_info['cache_key']
                 shortcut_used = True
+                interpolated_shortcut = user_input_lower  # Setze interpolated_shortcut für direkte Shortcuts
 
                 console.print(f"[dim]Verwende Kürzelwort: {user_input}[/dim]")
             else:
