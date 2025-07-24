@@ -3608,7 +3608,7 @@ Zusammenfassung:"""
                 
                 # Spezielle Behandlung für Systembericht
                 if original_input == 'report' or (interpolated_shortcut and interpolated_shortcut == 'report'):
-                    console.print(f"[dim]🔄 {get_text('report_generating')}[/dim]")
+                    console.print(f"[dim]🔄 Generiere detaillierten Systembericht...[/dim]")
                     
                     # Erstelle spezialisierten Prompt für Bericht
                     report_prompt = create_system_report_prompt(system_context)
@@ -3618,19 +3618,19 @@ Zusammenfassung:"""
                     console.print(f"[dim]🔄 Wechsle zu komplexem Modell für detaillierte Berichterstellung...[/dim]")
                     
                     # Generiere Bericht
-                    console.print(f"[dim]🤔 {get_text('chat_thinking')}[/dim]")
+                    console.print(f"[dim]🤔 Denke nach...[/dim]")
                     report_content = query_ollama(report_prompt, model=model, complex_analysis=True)
                     
                     if report_content:
                         # Speichere Bericht
-                        console.print(f"[dim]💾 {get_text('report_saving')}[/dim]")
+                        console.print(f"[dim]💾 Speichere Bericht...[/dim]")
                         try:
                             filename = save_system_report(report_content, system_info)
-                            console.print(f"\n[bold green]✅ {get_text('report_success')}[/bold green]")
-                            console.print(f"[green]📄 {filename}[/green]")
+                            console.print(f"\n[bold green]✅ Bericht erfolgreich gespeichert![/bold green]")
+                            console.print(f"[green]📄 Datei: {filename}[/green]")
                             
                             # Zeige Bericht in Chat
-                            console.print(f"\n[bold green]🤖 {get_text('chat_ollama')}:[/bold green]")
+                            console.print(f"\n[bold green]🤖 Ollama::[/bold green]")
                             console.print(report_content)
                             
                             # Cache die Antwort
@@ -3643,10 +3643,10 @@ Zusammenfassung:"""
                             continue
                             
                         except Exception as e:
-                            console.print(f"[red]❌ {get_text('report_error')} {e}[/red]")
+                            console.print(f"[red]❌ Fehler beim Speichern des Berichts: {e}[/red]")
                             continue
                     else:
-                        console.print(f"[red]❌ {get_text('chat_no_response')}[/red]")
+                        console.print(f"[red]❌ Keine Antwort von Ollama erhalten[/red]")
                         continue
                 
                 # Prüfe Context Cache für Shortcuts
