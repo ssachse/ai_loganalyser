@@ -1,0 +1,21 @@
+{
+  "docker_28.1.1": {
+    "data": {
+      "critical": [],
+      "high": [],
+      "medium": [],
+      "low": [],
+      "summary": {
+        "total": 0,
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 0,
+        "service": "docker",
+        "version": "28.1.1"
+      }
+    },
+    "timestamp": "2025-07-25T13:56:18.618312",
+    "ttl_hours": 24
+  }
+}

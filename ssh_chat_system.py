@@ -451,6 +451,9 @@ class SSHLogCollector:
         service_info = self._analyze_services(quick_mode=quick_mode)
         system_info.update(service_info)
         
+        # 4.5. CVE-Sicherheitsanalyse (falls gewünscht)
+        # Diese wird später in main() aufgerufen, wenn --with-cve Flag gesetzt ist
+        
         # 5. Sicherheits- und Anmeldungs-Analyse
         console.print("[dim]🔐 Analysiere Sicherheit und Anmeldungen...[/dim]")
         security_info = self._analyze_security()
@@ -665,6 +668,311 @@ class SSHLogCollector:
                 services_info['top_processes_memory'] = top_memory
         
         return services_info
+    
+    def _analyze_cve_vulnerabilities(self, system_info: Dict[str, Any], cve_database: str = 'hybrid', 
+                                   enable_cache: bool = True, offline_only: bool = False) -> Dict[str, Any]:
+        """Analysiert CVE-Sicherheitslücken für installierte Services"""
+        cve_info = {}
+        
+        console.print("[dim]🔍 Analysiere CVE-Sicherheitslücken...[/dim]")
+        
+        try:
+            # Sammle installierte Pakete und deren Versionen
+            installed_packages = {}
+            
+            # Debian/Ubuntu Pakete
+            if system_info.get('distribution', '').lower() in ['debian', 'ubuntu']:
+                packages_output = self.execute_remote_command('dpkg -l | grep "^ii" | head -100')
+                if packages_output:
+                    for line in packages_output.strip().split('\n'):
+                        if line.startswith('ii'):
+                            parts = line.split()
+                            if len(parts) >= 3:
+                                package_name = parts[1]
+                                version = parts[2]
+                                installed_packages[package_name] = version
+            
+            # RHEL/CentOS Pakete
+            elif system_info.get('distribution', '').lower() in ['red hat', 'centos', 'fedora']:
+                packages_output = self.execute_remote_command('rpm -qa --queryformat="%{NAME} %{VERSION}-%{RELEASE}\n" | head -100')
+                if packages_output:
+                    for line in packages_output.strip().split('\n'):
+                        if ' ' in line:
+                            package_name, version = line.split(' ', 1)
+                            installed_packages[package_name] = version
+            
+            # Fallback: Versuche direkte Service-Versions-Erkennung
+            if not installed_packages:
+                console.print("[dim]⚠️ Paket-Erkennung fehlgeschlagen - verwende direkte Service-Erkennung[/dim]")
+                
+                # Docker-Version direkt prüfen
+                docker_version = self.execute_remote_command('docker --version 2>/dev/null')
+                if docker_version:
+                    import re
+                    version_match = re.search(r'Docker version (\d+\.\d+\.\d+)', docker_version)
+                    if version_match:
+                        installed_packages['docker'] = version_match.group(1)
+                
+                # SSH-Version direkt prüfen
+                ssh_version = self.execute_remote_command('sshd -V 2>&1 | head -1')
+                if ssh_version and 'OpenSSH' in ssh_version:
+                    import re
+                    version_match = re.search(r'OpenSSH_(\d+\.\d+)', ssh_version)
+                    if version_match:
+                        installed_packages['sshd'] = version_match.group(1)
+                
+                # Kubernetes-Version direkt prüfen
+                k8s_version = self.execute_remote_command('kubectl version --client --short 2>/dev/null')
+                if k8s_version:
+                    import re
+                    version_match = re.search(r'v(\d+\.\d+\.\d+)', k8s_version)
+                    if version_match:
+                        installed_packages['kubernetes'] = version_match.group(1)
+            
+            # Wichtige Services für CVE-Check
+            important_services = [
+                'openssh-server', 'apache2', 'nginx', 'mysql-server', 'postgresql',
+                'docker', 'containerd', 'kubernetes', 'kubectl', 'kubelet',
+                'proxmox', 'mailcow', 'postfix', 'dovecot', 'exim4'
+            ]
+            
+            # Sammle Service-Versionen aus installierten Paketen
+            service_versions = {}
+            for service in important_services:
+                if service in installed_packages:
+                    service_versions[service] = installed_packages[service]
+            
+            # Sammle zusätzliche Service-Versionen aus laufenden Services
+            running_services = system_info.get('running_services', {})
+            
+            # Füge Docker-Version hinzu, falls verfügbar
+            if 'docker' in system_info and system_info['docker']['detected']:
+                docker_info = system_info['docker']
+                if 'version' in docker_info:
+                    service_versions['docker'] = docker_info['version']
+                    running_services['docker'] = f"Docker {docker_info['version']}"
+            
+            # Füge SSH-Version hinzu
+            ssh_version = self.execute_remote_command("sshd -V 2>&1 | head -1")
+            if ssh_version and 'OpenSSH' in ssh_version:
+                import re
+                version_match = re.search(r'OpenSSH_(\d+\.\d+)', ssh_version)
+                if version_match:
+                    service_versions['sshd'] = version_match.group(1)
+                    running_services['sshd'] = f"OpenSSH {version_match.group(1)}"
+            
+            # Füge Kubernetes-Version hinzu, falls verfügbar
+            if 'kubernetes' in system_info and system_info['kubernetes']['detected']:
+                k8s_info = system_info['kubernetes']
+                if 'version' in k8s_info:
+                    service_versions['kubernetes'] = k8s_info['version']
+                    running_services['kubernetes'] = f"Kubernetes {k8s_info['version']}"
+            
+            # Füge weitere wichtige Services hinzu
+            additional_services = {
+                'containerd': 'containerd',
+                'rsyslog': 'rsyslog',
+                'cron': 'cron',
+                'systemd': 'systemd'
+            }
+            
+            for service_name, package_name in additional_services.items():
+                if package_name in installed_packages:
+                    service_versions[service_name] = installed_packages[package_name]
+                    running_services[service_name] = f"{service_name} {installed_packages[package_name]}"
+            
+            # Debug-Ausgabe für Service-Versions-Erkennung
+            console.print(f"[dim]🔍 Gefundene Service-Versionen: {len(service_versions)}[/dim]")
+            for service, version in service_versions.items():
+                console.print(f"[dim]  • {service}: {version}[/dim]")
+            
+            # CVE-Analyse basierend auf gewählter Datenbank
+            if cve_database == 'nvd' or cve_database == 'hybrid' or cve_database == 'hybrid-european':
+                # Verwende echte CVE-Datenbanken
+                cve_info.update(self._perform_nvd_cve_analysis(service_versions, enable_cache, offline_only))
+            
+            if cve_database == 'ollama' or cve_database == 'hybrid' or cve_database == 'hybrid-european':
+                # Verwende Ollama für zusätzliche Analyse
+                cve_info.update(self._perform_ollama_cve_analysis(service_versions, running_services, system_info))
+            
+            if cve_database == 'european' or cve_database == 'hybrid-european':
+                # Verwende europäische CVE-Datenbanken
+                cve_info.update(self._perform_european_cve_analysis(service_versions, enable_cache, offline_only))
+            
+            # Speichere Basis-Informationen
+            cve_info['service_versions'] = service_versions
+            cve_info['running_services'] = running_services
+            cve_info['installed_packages_count'] = len(installed_packages)
+            cve_info['cve_database_used'] = cve_database
+            
+        except Exception as e:
+            console.print(f"[yellow]⚠️  Fehler bei CVE-Analyse: {str(e)[:100]}[/yellow]")
+            cve_info['error'] = str(e)
+        
+        return cve_info
+    
+    def _perform_nvd_cve_analysis(self, service_versions: Dict[str, str], enable_cache: bool, offline_only: bool) -> Dict[str, Any]:
+        """Führt CVE-Analyse mit NIST NVD durch"""
+        try:
+            # Importiere CVE-Datenbank-Checker
+            from cve_database_checker import CVEAnalyzer, create_cve_report_content
+            
+            # Erstelle CVE-Analyzer
+            analyzer = CVEAnalyzer(enable_cache=enable_cache)
+            
+            # Führe Analyse durch
+            nvd_results = analyzer.analyze_services(service_versions)
+            
+            # Erstelle formatierten Report
+            nvd_report = create_cve_report_content(nvd_results)
+            
+            return {
+                'nvd_analysis': nvd_results,
+                'nvd_report': nvd_report,
+                'database_results': nvd_results.get('database_results', {}),
+                'database_summary': nvd_results.get('summary', {})
+            }
+            
+        except ImportError:
+            console.print("[yellow]⚠️ CVE-Datenbank-Modul nicht verfügbar - verwende nur Ollama[/yellow]")
+            return {}
+        except Exception as e:
+            console.print(f"[yellow]⚠️ Fehler bei NVD-Analyse: {str(e)[:100]}[/yellow]")
+            return {}
+    
+    def _perform_european_cve_analysis(self, service_versions: Dict[str, str], enable_cache: bool, offline_only: bool) -> Dict[str, Any]:
+        """Führt CVE-Analyse mit europäischen Datenbanken durch"""
+        try:
+            # Importiere europäischen CVE-Datenbank-Checker
+            from european_cve_checker import EuropeanCVEAnalyzer, create_european_cve_report_content
+            
+            # Erstelle europäischen CVE-Analyzer
+            analyzer = EuropeanCVEAnalyzer()
+            
+            # Führe europäische Analyse durch
+            european_results = analyzer.analyze_european_cves(service_versions)
+            
+            # Erstelle formatierten europäischen Report
+            european_report = create_european_cve_report_content(european_results)
+            
+            return {
+                'european_analysis': european_results,
+                'european_report': european_report,
+                'european_results': european_results.get('results', {}),
+                'european_summary': european_results.get('summary', {})
+            }
+            
+        except ImportError:
+            console.print("[yellow]⚠️ Europäisches CVE-Modul nicht verfügbar[/yellow]")
+            return {}
+        except Exception as e:
+            console.print(f"[yellow]⚠️ Fehler bei europäischer CVE-Analyse: {str(e)[:100]}[/yellow]")
+            return {}
+    
+    def _perform_ollama_cve_analysis(self, service_versions: Dict[str, str], running_services: Dict[str, str], system_info: Dict[str, Any]) -> Dict[str, Any]:
+        """Führt CVE-Analyse mit Ollama durch"""
+        try:
+            # Erstelle CVE-Analyse-Prompt für Ollama
+            cve_prompt = self._create_cve_analysis_prompt(service_versions, running_services, system_info)
+            
+            # Führe CVE-Analyse mit Ollama durch
+            if cve_prompt:
+                cve_analysis = self._perform_cve_analysis_with_ollama(cve_prompt)
+                if cve_analysis:
+                    return {
+                        'ollama_analysis': cve_analysis,
+                        'ollama_prompt': cve_prompt
+                    }
+            
+            return {}
+            
+        except Exception as e:
+            console.print(f"[yellow]⚠️ Fehler bei Ollama-Analyse: {str(e)[:100]}[/yellow]")
+            return {}
+    
+    def _create_cve_analysis_prompt(self, service_versions: Dict[str, str], running_services: Dict[str, str], system_info: Dict[str, Any]) -> str:
+        """Erstellt einen Prompt für die CVE-Analyse mit Ollama"""
+        
+        prompt = f"""Du bist ein IT-Sicherheitsexperte und CVE-Spezialist. Analysiere die folgenden installierten Services und deren Versionen auf bekannte Sicherheitslücken (CVEs).
+
+SYSTEM-INFORMATIONEN:
+- Distribution: {system_info.get('distribution', 'Unbekannt')}
+- Kernel: {system_info.get('kernel', 'Unbekannt')}
+- Architektur: {system_info.get('architecture', 'Unbekannt')}
+
+INSTALLIERTE SERVICE-VERSIONEN:
+"""
+        
+        for service, version in service_versions.items():
+            prompt += f"- {service}: {version}\n"
+        
+        prompt += f"""
+LAUFENDE SERVICES:
+"""
+        
+        for service, status in running_services.items():
+            prompt += f"- {service}: {status}\n"
+        
+        prompt += """
+AUFGABE:
+1. Identifiziere bekannte CVEs für die installierten Services
+2. Bewerte die Schwere der Sicherheitslücken (Critical, High, Medium, Low)
+3. Prüfe ob Updates verfügbar sind
+4. Gib konkrete Handlungsempfehlungen
+
+ANTWORTE IM FOLGENDEN FORMAT:
+
+## CVE-SICHERHEITSANALYSE
+
+### KRITISCHE SICHERHEITSLÜCKEN (Critical)
+- [Service] [CVE-ID]: [Beschreibung] - [Empfehlung]
+
+### HOHE SICHERHEITSLÜCKEN (High)
+- [Service] [CVE-ID]: [Beschreibung] - [Empfehlung]
+
+### MITTLERE SICHERHEITSLÜCKEN (Medium)
+- [Service] [CVE-ID]: [Beschreibung] - [Empfehlung]
+
+### NIEDRIGE SICHERHEITSLÜCKEN (Low)
+- [Service] [CVE-ID]: [Beschreibung] - [Empfehlung]
+
+### UPDATE-EMPFEHLUNGEN
+- [Service]: [Aktuelle Version] → [Empfohlene Version]
+
+### SICHERHEITSZUSAMMENFASSUNG
+- Anzahl kritische CVEs: [X]
+- Anzahl hohe CVEs: [X]
+- Anzahl mittlere CVEs: [X]
+- Anzahl niedrige CVEs: [X]
+- Gesamtrisiko: [Critical/High/Medium/Low]
+
+### SOFORTIGE MASSNAHMEN
+1. [Konkrete Maßnahme 1]
+2. [Konkrete Maßnahme 2]
+3. [Konkrete Maßnahme 3]
+
+Verwende nur aktuelle und verifizierte CVE-Informationen. Wenn keine spezifischen CVEs bekannt sind, gib das an."""
+        
+        return prompt
+    
+    def _perform_cve_analysis_with_ollama(self, cve_prompt: str) -> Optional[str]:
+        """Führt die CVE-Analyse mit Ollama durch"""
+        
+        try:
+            # Importiere die query_ollama Funktion
+            from ssh_chat_system import query_ollama, select_best_model
+            
+            # Wähle bestes Modell für CVE-Analyse
+            model = select_best_model(complex_analysis=True, for_menu=False)
+            
+            # Führe CVE-Analyse durch
+            cve_analysis = query_ollama(cve_prompt, model=model, complex_analysis=True)
+            
+            return cve_analysis
+            
+        except Exception as e:
+            console.print(f"[yellow]⚠️  Fehler bei Ollama CVE-Analyse: {str(e)[:100]}[/yellow]")
+            return None
     
     def _analyze_performance(self) -> Dict[str, Any]:
         """Analysiert System-Performance"""
@@ -1057,13 +1365,131 @@ class SSHLogCollector:
             if system_info:
                 docker_info['system_usage'] = system_info
             
-            # Probleme identifizieren
+            # DETAILLIERTE CONTAINER-ANALYSE
+            console.print("[dim]🔍 Analysiere Container-Details...[/dim]")
+            
+            # Hole alle laufenden Container-Namen
+            running_container_names = self.execute_remote_command('docker ps --format "{{.Names}}"')
+            if running_container_names and running_container_names.strip():
+                container_names = [name.strip() for name in running_container_names.split('\n') if name.strip()]
+                
+                container_details = {}
+                container_stats = {}
+                container_problems = []
+                
+                for container_name in container_names:
+                    console.print(f"[dim]📊 Analysiere Container: {container_name}[/dim]")
+                    
+                    # Container-Inspect (detaillierte Informationen)
+                    inspect_cmd = f'docker inspect {container_name}'
+                    inspect_result = self.execute_remote_command(inspect_cmd)
+                    if inspect_result:
+                        container_details[container_name] = {
+                            'inspect': inspect_result,
+                            'name': container_name
+                        }
+                    
+                    # Container-Logs (letzte 50 Zeilen)
+                    logs_cmd = f'docker logs --tail 50 {container_name} 2>&1'
+                    logs_result = self.execute_remote_command(logs_cmd)
+                    if logs_result:
+                        container_details[container_name]['logs'] = logs_result
+                        
+                        # Analysiere Logs auf Fehler
+                        error_lines = []
+                        warning_lines = []
+                        for line in logs_result.split('\n'):
+                            line_lower = line.lower()
+                            if any(error_word in line_lower for error_word in ['error', 'fatal', 'failed', 'exception', 'panic']):
+                                error_lines.append(line.strip())
+                            elif any(warning_word in line_lower for warning_word in ['warn', 'warning', 'deprecated']):
+                                warning_lines.append(line.strip())
+                        
+                        if error_lines:
+                            container_details[container_name]['errors'] = error_lines[-10:]  # Letzte 10 Fehler
+                        if warning_lines:
+                            container_details[container_name]['warnings'] = warning_lines[-10:]  # Letzte 10 Warnungen
+                    
+                    # Container-Statistiken
+                    stats_cmd = f'docker stats {container_name} --no-stream --format "table {{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}\t{{.NetIO}}\t{{.BlockIO}}"'
+                    stats_result = self.execute_remote_command(stats_cmd)
+                    if stats_result:
+                        container_stats[container_name] = stats_result
+                    
+                    # Container-Health-Check
+                    health_cmd = f'docker inspect {container_name} --format "{{{{.State.Health.Status}}}}"'
+                    health_result = self.execute_remote_command(health_cmd)
+                    if health_result and health_result.strip():
+                        container_details[container_name]['health_status'] = health_result.strip()
+                        
+                        # Wenn Health-Check fehlschlägt, hole Details
+                        if 'unhealthy' in health_result.lower():
+                            health_logs_cmd = f'docker inspect {container_name} --format "{{{{range .State.Health.Log}}}}{{.Output}}{{end}}"'
+                            health_logs = self.execute_remote_command(health_logs_cmd)
+                            if health_logs:
+                                container_details[container_name]['health_logs'] = health_logs
+                                container_problems.append(f"Container {container_name}: Health-Check fehlgeschlagen")
+                    
+                    # Container-Restart-Policy
+                    restart_cmd = f'docker inspect {container_name} --format "{{{{.HostConfig.RestartPolicy.Name}}}}"'
+                    restart_result = self.execute_remote_command(restart_cmd)
+                    if restart_result:
+                        container_details[container_name]['restart_policy'] = restart_result.strip()
+                    
+                    # Container-Uptime
+                    uptime_cmd = f'docker inspect {container_name} --format "{{{{.State.StartedAt}}}}"'
+                    uptime_result = self.execute_remote_command(uptime_cmd)
+                    if uptime_result:
+                        container_details[container_name]['started_at'] = uptime_result.strip()
+                    
+                    # Container-Exit-Code (falls gestoppt)
+                    exit_code_cmd = f'docker inspect {container_name} --format "{{{{.State.ExitCode}}}}"'
+                    exit_code_result = self.execute_remote_command(exit_code_cmd)
+                    if exit_code_result and exit_code_result.strip() != '0':
+                        container_details[container_name]['exit_code'] = exit_code_result.strip()
+                        if exit_code_result.strip() != '0':
+                            container_problems.append(f"Container {container_name}: Exit-Code {exit_code_result.strip()}")
+                
+                # Speichere Container-Details
+                if container_details:
+                    docker_info['container_details'] = container_details
+                if container_stats:
+                    docker_info['container_stats'] = container_stats
+            
+            # ERWEITERTE PROBLEM-ERKENNUNG
             problems = []
             
             # Prüfe auf gestoppte Container
-            stopped_containers = self.execute_remote_command('docker ps -a --filter "status=exited" --format "{{.Names}}"')
+            stopped_containers = self.execute_remote_command('docker ps -a --filter "status=exited" --format "{{.Names}}\t{{.Status}}\t{{.ExitCode}}"')
             if stopped_containers and stopped_containers.strip():
-                problems.append(f"Gestoppte Container:\n{stopped_containers}")
+                stopped_lines = stopped_containers.strip().split('\n')
+                for line in stopped_lines:
+                    if line.strip():
+                        parts = line.split('\t')
+                        if len(parts) >= 3:
+                            name, status, exit_code = parts[0], parts[1], parts[2]
+                            if exit_code != '0':
+                                problems.append(f"Gestoppter Container mit Fehler: {name} (Exit-Code: {exit_code})")
+                            else:
+                                problems.append(f"Gestoppter Container: {name} ({status})")
+            
+            # Prüfe auf Container mit hoher CPU/Memory-Nutzung
+            high_usage_containers = self.execute_remote_command('docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemPerc}}" | tail -n +2')
+            if high_usage_containers:
+                for line in high_usage_containers.strip().split('\n'):
+                    if line.strip():
+                        parts = line.split('\t')
+                        if len(parts) >= 3:
+                            name, cpu_perc, mem_perc = parts[0], parts[1], parts[2]
+                            try:
+                                cpu_val = float(cpu_perc.replace('%', ''))
+                                mem_val = float(mem_perc.replace('%', ''))
+                                if cpu_val > 80:
+                                    problems.append(f"Container {name}: Hohe CPU-Nutzung ({cpu_perc})")
+                                if mem_val > 80:
+                                    problems.append(f"Container {name}: Hohe Memory-Nutzung ({mem_perc})")
+                            except:
+                                pass
             
             # Prüfe auf ungenutzte Images
             dangling_images = self.execute_remote_command('docker images -f "dangling=true" --format "{{.Repository}}:{{.Tag}}"')
@@ -1080,6 +1506,14 @@ class SSHLogCollector:
             if daemon_status and 'inactive' in daemon_status:
                 problems.append("Docker-Daemon ist inaktiv")
             
+            # Prüfe auf Docker-Daemon-Logs für Fehler
+            daemon_logs = self.execute_remote_command('journalctl -u docker --since "1 hour ago" --no-pager | grep -i "error\|fatal\|failed" | tail -10')
+            if daemon_logs and daemon_logs.strip():
+                problems.append(f"Docker-Daemon-Fehler:\n{daemon_logs}")
+            
+            # Füge Container-spezifische Probleme hinzu
+            problems.extend(container_problems)
+            
             # Speichere identifizierte Probleme
             if problems:
                 docker_info['problems'] = problems
@@ -1087,7 +1521,7 @@ class SSHLogCollector:
             
             if docker_info:
                 docker_info['docker_detected'] = True
-                console.print("[green]✅ Docker gefunden und analysiert[/green]")
+                console.print("[green]✅ Docker gefunden und detailliert analysiert[/green]")
             else:
                 console.print("[yellow]⚠️  Docker verfügbar, aber keine Daten erreichbar[/yellow]")
                 
@@ -3832,10 +4266,14 @@ def create_system_context(system_info: Dict[str, Any], log_entries: List[LogEntr
         if 'largest_files' in system_info:
             context_parts.append("\n=== GRÖSSTE DATEIEN ===")
             if system_info['largest_files']:
-                lines = system_info['largest_files'].split('\n')[:10]
-                for line in lines:
-                    if line.strip():
-                        context_parts.append(line.strip())
+                if isinstance(system_info['largest_files'], list):
+                    for file_info in system_info['largest_files'][:10]:
+                        context_parts.append(file_info)
+                else:
+                    lines = system_info['largest_files'].split('\n')[:10]
+                    for line in lines:
+                        if line.strip():
+                            context_parts.append(line.strip())
         
         # Größte Dateien nach Verzeichnissen
         if 'largest_files_by_directory' in system_info:
@@ -3843,10 +4281,14 @@ def create_system_context(system_info: Dict[str, Any], log_entries: List[LogEntr
             for directory, files in system_info['largest_files_by_directory'].items():
                 if files:
                     context_parts.append(f"\n{directory}:")
-                    lines = files.split('\n')[:5]
-                    for line in lines:
-                        if line.strip():
-                            context_parts.append(f"  {line.strip()}")
+                    if isinstance(files, list):
+                        for file_info in files[:5]:
+                            context_parts.append(f"  {file_info}")
+                    else:
+                        lines = files.split('\n')[:5]
+                        for line in lines:
+                            if line.strip():
+                                context_parts.append(f"  {line.strip()}")
     
     # Services (nur bei nicht-Netzwerk-Analysen)
     if not focus_network_security:
@@ -3883,6 +4325,99 @@ def create_system_context(system_info: Dict[str, Any], log_entries: List[LogEntr
             context_parts.append(f"\nPaket-Manager: {system_info['package_manager']}")
             context_parts.append(f"Installierte Pakete: {system_info.get('installed_packages_count', 'Unbekannt')}")
             context_parts.append(f"Verfügbare Updates: {system_info.get('available_updates', 'Unbekannt')}")
+        
+        # Docker-Informationen
+        if 'docker_detected' in system_info and system_info['docker_detected']:
+            context_parts.append("\n=== DOCKER-SYSTEM ===")
+            
+            if 'docker_version' in system_info:
+                context_parts.append(f"Version: {system_info['docker_version']}")
+            
+            if 'docker_info' in system_info:
+                context_parts.append("Docker-Info:")
+                context_parts.append(system_info['docker_info'])
+            
+            if 'running_containers' in system_info:
+                context_parts.append("Laufende Container:")
+                context_parts.append(system_info['running_containers'])
+            
+            if 'all_containers' in system_info:
+                context_parts.append("Alle Container:")
+                context_parts.append(system_info['all_containers'])
+            
+            if 'docker_containers' in system_info:
+                context_parts.append("Docker-Container Details:")
+                context_parts.append(system_info['docker_containers'])
+            
+            if 'docker_images' in system_info:
+                context_parts.append("Docker-Images:")
+                context_parts.append(system_info['docker_images'])
+            
+            if 'docker_volumes' in system_info:
+                context_parts.append("Docker-Volumes:")
+                context_parts.append(system_info['docker_volumes'])
+            
+            if 'docker_networks' in system_info:
+                context_parts.append("Docker-Netzwerke:")
+                context_parts.append(system_info['docker_networks'])
+            
+            if 'system_usage' in system_info:
+                context_parts.append("Docker-System-Nutzung:")
+                context_parts.append(system_info['system_usage'])
+            
+            # DETAILLIERTE CONTAINER-ANALYSE
+            if 'container_details' in system_info:
+                context_parts.append("\n=== DETAILLIERTE CONTAINER-ANALYSE ===")
+                
+                container_details = system_info['container_details']
+                for container_name, details in container_details.items():
+                    context_parts.append(f"\n--- Container: {container_name} ---")
+                    
+                    # Health-Status
+                    if 'health_status' in details:
+                        health_status = details['health_status']
+                        context_parts.append(f"Health-Status: {health_status}")
+                        
+                        if 'unhealthy' in health_status.lower() and 'health_logs' in details:
+                            context_parts.append("Health-Check-Fehler:")
+                            context_parts.append(details['health_logs'])
+                    
+                    # Restart-Policy
+                    if 'restart_policy' in details:
+                        context_parts.append(f"Restart-Policy: {details['restart_policy']}")
+                    
+                    # Uptime
+                    if 'started_at' in details:
+                        context_parts.append(f"Gestartet: {details['started_at']}")
+                    
+                    # Exit-Code (falls vorhanden)
+                    if 'exit_code' in details:
+                        context_parts.append(f"Exit-Code: {details['exit_code']}")
+                    
+                    # Log-Fehler und Warnungen
+                    if 'errors' in details and details['errors']:
+                        context_parts.append("Letzte Fehler in Logs:")
+                        for error in details['errors'][-5:]:  # Letzte 5 Fehler
+                            context_parts.append(f"  ERROR: {error}")
+                    
+                    if 'warnings' in details and details['warnings']:
+                        context_parts.append("Letzte Warnungen in Logs:")
+                        for warning in details['warnings'][-5:]:  # Letzte 5 Warnungen
+                            context_parts.append(f"  WARN: {warning}")
+            
+            # Container-Statistiken
+            if 'container_stats' in system_info:
+                context_parts.append("\n=== CONTAINER-STATISTIKEN ===")
+                container_stats = system_info['container_stats']
+                for container_name, stats in container_stats.items():
+                    context_parts.append(f"\n{container_name}:")
+                    context_parts.append(stats)
+            
+            # Docker-Probleme
+            if 'problems_count' in system_info and system_info['problems_count'] > 0:
+                context_parts.append(f"\n=== DOCKER-PROBLEME ({system_info['problems_count']} gefunden) ===")
+                for i, problem in enumerate(system_info['problems'], 1):
+                    context_parts.append(f"Problem {i}: {problem}")
         
         # Kubernetes-Cluster
         if 'kubernetes_detected' in system_info and system_info['kubernetes_detected']:
@@ -4382,6 +4917,54 @@ def create_system_context(system_info: Dict[str, Any], log_entries: List[LogEntr
             context_parts.append("Docker-System-Nutzung:")
             context_parts.append(system_info['system_usage'])
         
+        # DETAILLIERTE CONTAINER-ANALYSE
+        if 'container_details' in system_info:
+            context_parts.append("\n=== DETAILLIERTE CONTAINER-ANALYSE ===")
+            
+            container_details = system_info['container_details']
+            for container_name, details in container_details.items():
+                context_parts.append(f"\n--- Container: {container_name} ---")
+                
+                # Health-Status
+                if 'health_status' in details:
+                    health_status = details['health_status']
+                    context_parts.append(f"Health-Status: {health_status}")
+                    
+                    if 'unhealthy' in health_status.lower() and 'health_logs' in details:
+                        context_parts.append("Health-Check-Fehler:")
+                        context_parts.append(details['health_logs'])
+                
+                # Restart-Policy
+                if 'restart_policy' in details:
+                    context_parts.append(f"Restart-Policy: {details['restart_policy']}")
+                
+                # Uptime
+                if 'started_at' in details:
+                    context_parts.append(f"Gestartet: {details['started_at']}")
+                
+                # Exit-Code (falls vorhanden)
+                if 'exit_code' in details:
+                    context_parts.append(f"Exit-Code: {details['exit_code']}")
+                
+                # Log-Fehler und Warnungen
+                if 'errors' in details and details['errors']:
+                    context_parts.append("Letzte Fehler in Logs:")
+                    for error in details['errors'][-5:]:  # Letzte 5 Fehler
+                        context_parts.append(f"  ERROR: {error}")
+                
+                if 'warnings' in details and details['warnings']:
+                    context_parts.append("Letzte Warnungen in Logs:")
+                    for warning in details['warnings'][-5:]:  # Letzte 5 Warnungen
+                        context_parts.append(f"  WARN: {warning}")
+        
+        # Container-Statistiken
+        if 'container_stats' in system_info:
+            context_parts.append("\n=== CONTAINER-STATISTIKEN ===")
+            container_stats = system_info['container_stats']
+            for container_name, stats in container_stats.items():
+                context_parts.append(f"\n{container_name}:")
+                context_parts.append(stats)
+        
         # Docker-Probleme
         if 'problems_count' in system_info and system_info['problems_count'] > 0:
             context_parts.append(f"\nDOCKER-PROBLEME ({system_info['problems_count']} gefunden):")
@@ -4453,47 +5036,305 @@ def create_system_context(system_info: Dict[str, Any], log_entries: List[LogEntr
         for i, anomaly in enumerate(anomalies[:5], 1):  # Zeige nur die ersten 5
             context_parts.append(f"Anomalie {i}: {anomaly.description} (Schwere: {anomaly.severity})")
     
+    # CVE-Sicherheitsanalyse
+    if 'cve_analysis' in system_info and system_info['cve_analysis']:
+        context_parts.append(f"\n=== CVE-SICHERHEITSANALYSE ===")
+        cve_data = system_info['cve_analysis']
+        
+        # NVD-Datenbank-Ergebnisse
+        if 'database_summary' in cve_data:
+            summary = cve_data['database_summary']
+            context_parts.append("NVD-Datenbank-Analyse:")
+            context_parts.append(f"  Services analysiert: {summary.get('total_services', 0)}")
+            context_parts.append(f"  CVEs gefunden: {summary.get('total_cves', 0)}")
+            context_parts.append(f"  Kritische CVEs: {summary.get('critical_cves', 0)}")
+            context_parts.append(f"  Hohe CVEs: {summary.get('high_cves', 0)}")
+            context_parts.append(f"  Mittlere CVEs: {summary.get('medium_cves', 0)}")
+            context_parts.append(f"  Niedrige CVEs: {summary.get('low_cves', 0)}")
+            context_parts.append(f"  Gesamtrisiko: {summary.get('overall_risk', 'Unknown')}")
+        
+        # NVD-Report
+        if 'nvd_report' in cve_data:
+            context_parts.append("\nNVD-Report:")
+            context_parts.append(cve_data['nvd_report'])
+        
+        # Europäische CVE-Analyse
+        if 'european_summary' in cve_data:
+            european_summary = cve_data['european_summary']
+            context_parts.append("\n🇪🇺 Europäische CVE-Analyse:")
+            context_parts.append(f"  EU-Datenbanken geprüft: {european_summary.get('databases_checked', 0)}")
+            context_parts.append(f"  Europäische CVEs gefunden: {european_summary.get('total_cves', 0)}")
+            context_parts.append(f"  Kritische EU-CVEs: {european_summary.get('critical_count', 0)}")
+            context_parts.append(f"  Hohe EU-CVEs: {european_summary.get('high_count', 0)}")
+            context_parts.append(f"  Mittlere EU-CVEs: {european_summary.get('medium_count', 0)}")
+            context_parts.append(f"  Niedrige EU-CVEs: {european_summary.get('low_count', 0)}")
+            
+            # EU-Compliance Status
+            compliance = european_summary.get('eu_compliance', {})
+            context_parts.append(f"  GDPR-konform: {'Ja' if compliance.get('gdpr_compliant') else 'Nein'}")
+            context_parts.append(f"  NIS-Richtlinie: {'Ja' if compliance.get('nis_directive') else 'Nein'}")
+            context_parts.append(f"  Datenverarbeitung: {compliance.get('data_processing', 'N/A')}")
+            context_parts.append(f"  Datenspeicherung: {compliance.get('data_storage', 'N/A')}")
+        
+        # Europäische CVE-Ergebnisse
+        if 'european_results' in cve_data:
+            context_parts.append("\n🇪🇺 Europäische CVE-Details:")
+            european_results = cve_data['european_results']
+            for service, db_results in european_results.items():
+                if any(db_results.values()):
+                    context_parts.append(f"  {service}:")
+                    for db_id, cves in db_results.items():
+                        if cves:
+                            context_parts.append(f"    {db_id}: {len(cves)} CVEs")
+                            for cve in cves[:3]:  # Zeige nur die ersten 3
+                                context_parts.append(f"      • {cve.get('cve_id', 'N/A')}: {cve.get('title', 'N/A')}")
+        
+        # Europäischer CVE-Report
+        if 'european_report' in cve_data:
+            context_parts.append("\n🇪🇺 Europäischer CVE-Report:")
+            context_parts.append(cve_data['european_report'])
+        
+        # Ollama-Analyse
+        if 'ollama_analysis' in cve_data:
+            context_parts.append("\nOllama-Analyse:")
+            context_parts.append(cve_data['ollama_analysis'])
+        
+        # Service-Versionen
+        if 'service_versions' in cve_data:
+            context_parts.append("\nService-Versionen:")
+            for service, version in cve_data['service_versions'].items():
+                context_parts.append(f"  {service}: {version}")
+        
+        # Basis-Informationen
+        if 'installed_packages_count' in cve_data:
+            context_parts.append(f"\nAnalysierte Pakete: {cve_data['installed_packages_count']}")
+        
+        if 'cve_database_used' in cve_data:
+            context_parts.append(f"Datenbank: {cve_data['cve_database_used']}")
+    
     return "\n".join(context_parts)
 
 
 def create_system_report_prompt(system_context: str) -> str:
     """Erstellt einen spezialisierten Prompt für die Systemberichterstellung"""
-    prompt = f"""Du bist ein Enterprise-Architekt & Senior IT-Consultant mit über 20 Jahren Erfahrung in Software-Engineering, Cloud- und On-Prem-Infrastrukturen, IT-Security, DevOps-Automatisierung und Change-Management.
-
-Deine Aufgabe ist es, eine bestehende Systemanalyse in umsetzbare Arbeitspakete zu übersetzen. Die Analyse enthält Informationen zu Architektur, Infrastruktur, Anforderungen, Beschränkungen, Risiken und derzeitigen Schwachstellen. Ziel ist es, daraus einen priorisierten Maßnahmen-Katalog abzuleiten, der sofort in einem Projekt-Backlog oder Aktionsplan verwendet werden kann.
+    prompt = f"""Du bist ein erfahrener System-Administrator und IT-Sicherheitsexperte. Deine Aufgabe ist es, eine detaillierte Systemanalyse zu erstellen, die auf den tatsächlich gesammelten Daten basiert.
 
 WICHTIGE REGELN:
 - Antworte IMMER auf Deutsch
-- Erstelle ein strukturiertes Markdown-Dokument
-- Identifiziere automatisch Engpässe, Sicherheitslücken und Unregelmäßigkeiten
-- Gib konkrete Handlungsempfehlungen mit Prioritäten
-- Verwende die bereitgestellten System-Daten als Grundlage
+- Analysiere NUR die bereitgestellten System-Daten
+- Gib konkrete, spezifische Informationen über das tatsächliche System
+- Verwende die echten Werte aus den System-Daten (CPU-Auslastung, Speicherplatz, etc.)
+- Identifiziere echte Probleme basierend auf den Daten
+- Wenn keine relevanten Daten vorhanden sind, sage das ehrlich
+- KEINE allgemeinen Aussagen oder "Gelaber"
+- Verwende ALLE verfügbaren Daten aus dem System-Context
+- Der Bericht sollte so vollständig wie möglich sein
+- INKLUDIERE ALLE DETAILLIERTEN INFORMATIONEN aus dem System-Context
+- Bei Kubernetes: Verwende ALLE Node-Namen, Pod-Details, Ressourcen-Verbrauch und Probleme
+- Bei Docker: Verwende ALLE Container-Details, Images, Volumes und Probleme
 
-SCHRITT-FÜR-SCHRITT-VORGANG:
-1. Analysiere die Systeminformationen und extrahiere zentrale Ziele, Komponenten, Probleme, Risiken und Abhängigkeiten
-2. Ordne alle Erkenntnisse nach Themenblöcken (Architektur, Infrastruktur, Sicherheit, Daten, Prozesse)
-3. Bewerte jede Erkenntnis nach Impact (hoch/mittel/niedrig) und Aufwand (hoch/mittel/niedrig)
-4. Leite eine umsetzungsorientierte Reihenfolge ab (Quick Wins → Mid-Term → Long-Term)
-5. Formuliere konkrete Handlungsanweisungen mit:
-   - Was ist zu tun? (konkret, messbar)
-   - Warum ist es wichtig? (Nutzen/Risikominderung)
-   - Wie wird es umgesetzt? (Tools, Methoden, Verantwortlichkeiten)
-   - Akzeptanzkriterien (Definition of Done)
-   - Abhängigkeiten/Risiken (inkl. Minderung)
-6. Gib für jedes Arbeitspaket grobe Story-Points oder Personentage sowie benötigte Skill-Profile an
-7. Erstelle einen groben Zeitplan mit logischer Reihenfolge
-8. Fasse auf max. 200 Wörtern die wichtigsten Empfehlungen, Risiken und nächsten Schritte zusammen
+VERBOTEN: Verwende KEINE generischen Beispiele wie "10 Pods" oder "5 Services"!
+ERFORDERLICH: Verwende die ECHTEN Daten aus dem System-Context!
+- Echte Node-Namen: k3s-agent-arm-cow, k3s-control-plane-fsn1-xuk, etc.
+- Echte Pod-Namen: argo-cd-argocd-application-controller-0, etc.
+- Echte Ressourcen-Verbrauch: CPU(cores) und MEMORY(bytes) aus den Daten
 
-FORMAT:
-- Markdown-Dokument mit klaren Überschriften (H2/H3)
-- Tabelle: ID | Thema | Maßnahme | Impact | Aufwand | Priorität | Abhängigkeiten | Verantwortlich | Akzeptanzkriterien
-- Verwende deutsche Fachterminologie, aber achte auf Verständlichkeit
-- Gib Code-Snippets, Shell-Befehle in Code-Blöcken an, wenn erforderlich
+SYSTEMBERICHT-STRUKTUR:
+
+## System-Übersicht
+- Hostname: [aus den Daten]
+- Distribution: [aus den Daten]
+- Kernel: [aus den Daten]
+- CPU: [aus den Daten]
+- RAM: [aus den Daten]
+- Speicherplatz: [aus den Daten]
+- Zeitzone: [aus den Daten]
+- Uptime: [aus den Daten]
+
+## Aktuelle System-Status
+- CPU-Auslastung: [konkreter Wert aus den Daten]
+- Memory-Auslastung: [konkreter Wert aus den Daten]
+- Speicherplatz-Auslastung: [konkreter Wert aus den Daten]
+- Load Average (1min/5min/15min): [aus den Daten]
+- Aktuelle Benutzer: [aus den Daten]
+- Uptime: [aus den Daten]
+- Zeitzone: [aus den Daten]
+
+## Erkannte Services und Module
+- Docker: [Status und Details aus den Daten]
+- Kubernetes: [Status aus den Daten]
+- Proxmox: [Status aus den Daten]
+- Mailserver: [Status aus den Daten]
+- Wichtige Services: [Liste aus den Daten]
+- Paket-Manager: [aus den Daten]
+- Installierte Pakete: [aus den Daten]
+- Verfügbare Updates: [aus den Daten]
+
+## Speicherplatz-Details
+- Root-Partition: [aus den Daten]
+- Größte Verzeichnisse: [aus den Daten]
+- Größte Dateien: [aus den Daten]
+- Docker-Speicherplatz: [aus den Daten]
+- Log-Speicherplatz: [aus den Daten]
+
+## Kubernetes-Cluster (falls vorhanden)
+- Cluster-Version: [aus den Daten]
+- Nodes: [Anzahl und Status aus den Daten]
+- Pods: [Anzahl und Details aus den Daten]
+- Services: [aus den Daten]
+- Probleme: [aus den Daten]
+- Ressourcen-Auslastung: [aus den Daten]
+- Node-Details: [aus den Daten]
+- Pod-Ressourcen: [aus den Daten]
+- Namespaces: [aus den Daten]
+- Deployments: [aus den Daten]
+
+WICHTIG: Wenn Kubernetes-Daten im System-Context vorhanden sind, verwende ALLE verfügbaren Informationen:
+- Node-Status mit IPs und Rollen
+- Pod-Ressourcen-Verbrauch (CPU/Memory)
+- Cluster-Informationen
+- Probleme und Warnungen
+- Spezifische Node-Namen und deren Status
+
+BEISPIEL für Kubernetes-Abschnitt:
+**Kubernetes-Cluster:**
+- **Version:** v1.30.14+k3s1
+- **Nodes:** 9 Nodes (k3s-agent-arm-cow, k3s-agent-arm-iuw, k3s-control-plane-fsn1-xuk, etc.)
+- **Pods:** 100+ Pods in verschiedenen Namespaces
+- **Node-Ressourcen:** CPU-Auslastung 1-16%, Memory-Auslastung 16-81%
+- **Pod-Ressourcen:** Detaillierte CPU/Memory-Verbrauch pro Pod
+- **Probleme:** 1 Problem (ungenutzte Volumes)
+
+WICHTIG: Verwende die ECHTEN Daten aus dem System-Context, nicht generische Beispiele!
+- Wenn "Kubernetes-Version: Client Version: v1.30.0" im Context steht, verwende das!
+- Wenn "Node-Status:" mit echten Node-Namen im Context steht, verwende das!
+- Wenn "Pod-Ressourcen:" mit echten Pod-Namen im Context steht, verwende das!
+
+VERBOTEN: Verwende KEINE generischen Beispiele wie "10 Pods" oder "5 Services"!
+ERFORDERLICH: Verwende die ECHTEN Daten aus dem System-Context!
+- Echte Node-Namen: k3s-agent-arm-cow, k3s-control-plane-fsn1-xuk, etc.
+- Echte Pod-Namen: argo-cd-argocd-application-controller-0, etc.
+- Echte Ressourcen-Verbrauch: CPU(cores) und MEMORY(bytes) aus den Daten
+
+OBLIGATORISCH: Wenn Kubernetes-Daten im System-Context vorhanden sind, MUSS ein Kubernetes-Abschnitt im Report enthalten sein!
+
+WICHTIG: Der Report MUSS folgende Abschnitte enthalten, wenn die entsprechenden Daten im System-Context vorhanden sind:
+1. Kubernetes-Cluster (wenn Kubernetes-Daten vorhanden sind)
+2. Docker-Container (wenn Docker-Daten vorhanden sind)
+3. CVE-Sicherheitsanalyse (wenn CVE-Daten vorhanden sind)
+
+JEDER dieser Abschnitte MUSS die ECHTEN Daten aus dem System-Context verwenden!
+
+WICHTIG: Der Report MUSS folgende Abschnitte enthalten, wenn die entsprechenden Daten im System-Context vorhanden sind:
+1. Kubernetes-Cluster (wenn Kubernetes-Daten vorhanden sind)
+2. Docker-Container (wenn Docker-Daten vorhanden sind)
+3. CVE-Sicherheitsanalyse (wenn CVE-Daten vorhanden sind)
+
+JEDER dieser Abschnitte MUSS die ECHTEN Daten aus dem System-Context verwenden!
+
+BEISPIEL für Kubernetes-Abschnitt:
+**Kubernetes-Cluster:**
+- **Version:** v1.30.14+k3s1
+- **Nodes:** 9 Nodes (k3s-agent-arm-cow, k3s-agent-arm-iuw, k3s-control-plane-fsn1-xuk, etc.)
+- **Pods:** 100+ Pods in verschiedenen Namespaces
+- **Node-Ressourcen:** CPU-Auslastung 1-16%, Memory-Auslastung 16-81%
+- **Pod-Ressourcen:** Detaillierte CPU/Memory-Verbrauch pro Pod
+- **Probleme:** 1 Problem (ungenutzte Volumes)
+
+WICHTIG: Verwende die ECHTEN Daten aus dem System-Context, nicht generische Beispiele!
+- Wenn "Kubernetes-Version: Client Version: v1.30.0" im Context steht, verwende das!
+- Wenn "Node-Status:" mit echten Node-Namen im Context steht, verwende das!
+- Wenn "Pod-Ressourcen:" mit echten Pod-Namen im Context steht, verwende das!
+
+VERBOTEN: Verwende KEINE generischen Beispiele wie "10 Pods" oder "5 Services"!
+ERFORDERLICH: Verwende die ECHTEN Daten aus dem System-Context!
+- Echte Node-Namen: k3s-agent-arm-cow, k3s-control-plane-fsn1-xuk, etc.
+- Echte Pod-Namen: argo-cd-argocd-application-controller-0, etc.
+- Echte Ressourcen-Verbrauch: CPU(cores) und MEMORY(bytes) aus den Daten
+
+OBLIGATORISCH: Wenn Kubernetes-Daten im System-Context vorhanden sind, MUSS ein Kubernetes-Abschnitt im Report enthalten sein!
+
+## Docker-Container (falls vorhanden)
+- Version: [aus den Daten]
+- Laufende Container: [Liste aus den Daten]
+- Container-Status: [aus den Daten]
+- Probleme: [aus den Daten]
+- Ungenutzte Volumes: [aus den Daten]
+
+## Netzwerk und Sicherheit
+- SSH-Konfiguration: [aus den Daten]
+- Firewall-Status: [aus den Daten]
+- Offene Ports: [aus den Daten]
+- Benutzer-Logins: [aus den Daten]
+
+## CVE-Sicherheitsanalyse
+- NVD-Datenbank-Analyse: [aus den Daten]
+- Ollama-Analyse: [aus den Daten]
+- Europäische CVE-Analyse: [aus den Daten]
+- Gefundene CVEs: [aus den Daten]
+- Update-Empfehlungen: [aus den Daten]
+
+## Identifizierte Probleme
+- Kritische Probleme: [aus den Daten]
+- Hohe Probleme: [aus den Daten]
+- Mittlere Probleme: [aus den Daten]
+- Niedrige Probleme: [aus den Daten]
+
+## Empfehlungen
+- Sofortige Maßnahmen: [basierend auf den gefundenen Problemen]
+- Mittelfristige Maßnahmen: [basierend auf den Daten]
+- Langfristige Maßnahmen: [basierend auf den Daten]
+
+## Sicherheitszusammenfassung
+- Anzahl kritische CVEs: [aus den Daten]
+- Anzahl hohe CVEs: [aus den Daten]
+- Anzahl mittlere CVEs: [aus den Daten]
+- Anzahl niedrige CVEs: [aus den Daten]
+- Gesamtrisiko: [aus den Daten]
+- SSH-Konfiguration: [aus den Daten]
+- Lauschende Services: [aus den Daten]
+- Offene Ports: [aus den Daten]
+- Benutzer-Logins: [aus den Daten]
+- Fehlgeschlagene Anmeldungen: [aus den Daten]
+
+## Docker-Details (falls vorhanden)
+- Version: [aus den Daten]
+- Laufende Container: [aus den Daten]
+- Docker-Images: [aus den Daten]
+- Docker-Volumes: [aus den Daten]
+- Docker-Netzwerke: [aus den Daten]
+- System-Nutzung: [aus den Daten]
+
+## Log-Einträge und Anomalien
+- Kürzliche Log-Einträge: [aus den Daten]
+- Erkannte Anomalien: [aus den Daten]
+- Prozess-Informationen: [aus den Daten]
+- System-Status: [aus den Daten]
+
+## Identifizierte Probleme
+Basierend auf den tatsächlichen Daten:
+- [Problem 1 mit konkreten Werten]
+- [Problem 2 mit konkreten Werten]
+- [Problem 3 mit konkreten Werten]
+
+## Empfehlungen
+Konkrete, umsetzbare Empfehlungen basierend auf den echten Daten:
+1. [Spezifische Empfehlung mit Begründung]
+2. [Spezifische Empfehlung mit Begründung]
+3. [Spezifische Empfehlung mit Begründung]
+
+## Nächste Schritte
+Priorisierte Liste der wichtigsten Maßnahmen:
+1. [Konkrete Maßnahme]
+2. [Konkrete Maßnahme]
+3. [Konkrete Maßnahme]
+
+WICHTIG: Verwende ALLE verfügbaren Informationen aus den System-Daten. Erfinde keine Daten oder allgemeine Aussagen. Der Bericht sollte so vollständig wie möglich sein und alle relevanten Informationen enthalten.
 
 === SYSTEM-INFORMATIONEN ===
 {system_context}
 
-Erstelle jetzt einen detaillierten Systembericht mit Handlungsanweisungen:"""
+Erstelle jetzt einen detaillierten, spezifischen Systembericht basierend auf ALLEN verfügbaren Daten:"""
     
     return prompt
 
@@ -5909,6 +6750,17 @@ def main():
     parser.add_argument('--no-logs', action='store_true', help='Überspringe Log-Sammlung (nur System-Info)')
     parser.add_argument('--debug', action='store_true', help='Zeige Debug-Informationen (Modell-Auswahl, etc.)')
     parser.add_argument('--include-network-security', action='store_true', help='Führe Netzwerk-Sicherheitsanalyse automatisch am Anfang durch')
+    parser.add_argument('--auto-report', action='store_true', help='Generiere automatisch einen Systembericht und beende das Programm')
+    parser.add_argument('--report-and-chat', action='store_true', help='Generiere automatisch einen Systembericht und starte dann den interaktiven Chat')
+    parser.add_argument('--with-cve', action='store_true', help='Führe CVE-Sicherheitsanalyse für installierte Services durch')
+    parser.add_argument('--cve-database', choices=['ollama', 'nvd', 'hybrid', 'european', 'hybrid-european'], 
+                       default='hybrid', help='CVE-Datenbank für Analyse (Standard: hybrid)')
+    parser.add_argument('--cve-cache', action='store_true', 
+                       help='Verwende lokalen CVE-Cache')
+    parser.add_argument('--cve-offline', action='store_true', 
+                       help='Nur lokale CVE-Daten verwenden')
+    parser.add_argument('--eu-compliance', action='store_true',
+                       help='Aktiviere EU-Compliance-Modus (GDPR, NIS-Richtlinie)')
     
     args = parser.parse_args()
     
@@ -5951,6 +6803,80 @@ def main():
         system_info['ssh_user'] = username
         system_info['ssh_port'] = args.port
         system_info['ssh_key_file'] = args.key_file
+        
+        # Führe CVE-Sicherheitsanalyse durch, falls gewünscht
+        if args.with_cve:
+            console.print("\n[bold blue]🔍 CVE-Sicherheitsanalyse[/bold blue]")
+            console.print("="*60)
+            
+            try:
+                # Bestimme CVE-Datenbank und Cache-Einstellungen
+                cve_database = args.cve_database
+                enable_cache = args.cve_cache or True  # Standardmäßig aktiviert
+                offline_only = args.cve_offline
+                
+                console.print(f"[dim]Datenbank: {cve_database}, Cache: {'Aktiviert' if enable_cache else 'Deaktiviert'}, Offline: {'Ja' if offline_only else 'Nein'}[/dim]")
+                
+                cve_info = collector._analyze_cve_vulnerabilities(
+                    system_info, 
+                    cve_database=cve_database,
+                    enable_cache=enable_cache,
+                    offline_only=offline_only
+                )
+                
+                if cve_info:
+                    system_info['cve_analysis'] = cve_info
+                    
+                    # Zeige CVE-Zusammenfassung basierend auf verwendeter Datenbank
+                    if cve_database in ['nvd', 'hybrid', 'hybrid-european'] and 'database_summary' in cve_info:
+                        summary = cve_info['database_summary']
+                        console.print(f"[green]✅ NVD CVE-Analyse abgeschlossen[/green]")
+                        console.print(f"[dim]📊 {summary.get('total_services', 0)} Services analysiert[/dim]")
+                        console.print(f"[dim]🔍 {summary.get('total_cves', 0)} CVEs gefunden[/dim]")
+                        
+                        if summary.get('critical_cves', 0) > 0:
+                            console.print(f"[bold red]🚨 {summary['critical_cves']} kritische CVEs gefunden![/bold red]")
+                        if summary.get('high_cves', 0) > 0:
+                            console.print(f"[bold yellow]⚠️ {summary['high_cves']} hohe CVEs gefunden[/bold yellow]")
+                        
+                        console.print(f"[dim]📈 Gesamtrisiko: {summary.get('overall_risk', 'Unknown')}[/dim]")
+                    
+                    if cve_database in ['european', 'hybrid-european'] and 'european_summary' in cve_info:
+                        european_summary = cve_info['european_summary']
+                        console.print(f"[green]✅ Europäische CVE-Analyse abgeschlossen[/green]")
+                        console.print(f"[dim]🇪🇺 {european_summary.get('databases_checked', 0)} EU-Datenbanken geprüft[/dim]")
+                        console.print(f"[dim]🔍 {european_summary.get('total_cves', 0)} europäische CVEs gefunden[/dim]")
+                        
+                        if european_summary.get('critical_count', 0) > 0:
+                            console.print(f"[bold red]🚨 {european_summary['critical_count']} kritische EU-CVEs gefunden![/bold red]")
+                        if european_summary.get('high_count', 0) > 0:
+                            console.print(f"[bold yellow]⚠️ {european_summary['high_count']} hohe EU-CVEs gefunden[/bold yellow]")
+                        
+                        # EU-Compliance Status
+                        compliance = european_summary.get('eu_compliance', {})
+                        console.print(f"[dim]🔒 GDPR-konform: {'Ja' if compliance.get('gdpr_compliant') else 'Nein'}[/dim]")
+                        console.print(f"[dim]🏛️ NIS-Richtlinie: {'Ja' if compliance.get('nis_directive') else 'Nein'}[/dim]")
+                    
+                    if cve_database in ['ollama', 'hybrid', 'hybrid-european'] and 'ollama_analysis' in cve_info:
+                        console.print(f"[green]✅ Ollama CVE-Analyse abgeschlossen[/green]")
+                        console.print(f"[dim]📊 {cve_info.get('installed_packages_count', 0)} Pakete analysiert[/dim]")
+                        console.print(f"[dim]🔧 {len(cve_info.get('service_versions', {}))} Services geprüft[/dim]")
+                        
+                        # Zeige erste Zeilen der Ollama-Analyse
+                        ollama_analysis = cve_info['ollama_analysis']
+                        lines = ollama_analysis.split('\n')[:10]
+                        console.print(f"[dim]📝 Ollama-Analyse (erste Zeilen):[/dim]")
+                        for line in lines:
+                            if line.strip():
+                                console.print(f"[dim]  {line.strip()}[/dim]")
+                    
+                    if not any(key in cve_info for key in ['database_summary', 'ollama_analysis']):
+                        console.print(f"[yellow]⚠️ Keine CVE-Informationen gefunden[/yellow]")
+                else:
+                    console.print(f"[red]❌ Fehler bei CVE-Analyse[/red]")
+                    
+            except Exception as e:
+                console.print(f"[red]❌ Fehler bei CVE-Analyse: {e}[/red]")
         
         # Führe Netzwerk-Sicherheitsanalyse durch, falls gewünscht
         if args.include_network_security:
@@ -6249,6 +7175,89 @@ def main():
             if 'failed_logins_by_user' in system_info and system_info['failed_logins_by_user']:
                 console.print("\n[bold red]Fehlgeschlagene Anmeldungen:[/bold red]")
                 console.print(system_info['failed_logins_by_user'])
+        
+        # Hilfsfunktion für Report-Generierung
+        def generate_system_report():
+            console.print("\n[bold blue]📄 Automatische Report-Generierung[/bold blue]")
+            console.print("="*60)
+            
+            try:
+                # Erstelle leere Log-Entries und Anomalies für den Report
+                log_entries = []
+                anomalies = []
+                
+                # Erstelle System-Context
+                console.print("[dim]Erstelle System-Context...[/dim]")
+                system_context = create_system_context(system_info, log_entries, anomalies)
+                
+                # Erstelle Report-Prompt
+                console.print("[dim]Erstelle Report-Prompt...[/dim]")
+                report_prompt = create_system_report_prompt(system_context)
+                
+                # Wähle bestes Modell für Report-Generierung
+                console.print("[dim]Wähle Modell für Report-Generierung...[/dim]")
+                model = select_best_model(complex_analysis=True, for_menu=False)
+                console.print(f"[dim]Verwende Modell: {model}[/dim]")
+                
+                # Generiere Report
+                console.print("[dim]Generiere Systembericht...[/dim]")
+                report_content = query_ollama(report_prompt, model=model, complex_analysis=True)
+                
+                if report_content:
+                    # Speichere Report
+                    console.print("[dim]Speichere Report...[/dim]")
+                    filename = save_system_report(report_content, system_info)
+                    
+                    if filename and os.path.exists(filename):
+                        console.print(f"[green]✅ Systembericht erfolgreich generiert und gespeichert[/green]")
+                        console.print(f"[green]📄 Datei: {filename}[/green]")
+                        
+                        # Prüfe ob Datei tatsächlich existiert
+                        if os.path.exists(filename):
+                            console.print(f"[green]✅ Datei existiert und ist lesbar[/green]")
+                            
+                            # Zeige Dateigröße
+                            file_size = os.path.getsize(filename)
+                            console.print(f"[dim]📊 Dateigröße: {file_size} Bytes[/dim]")
+                            
+                            # Zeige erste Zeilen des Reports
+                            try:
+                                with open(filename, 'r', encoding='utf-8') as f:
+                                    first_lines = [f.readline().strip() for _ in range(5) if f.readline().strip()]
+                                console.print(f"[dim]📝 Erste Zeilen:[/dim]")
+                                for line in first_lines:
+                                    console.print(f"[dim]  {line}[/dim]")
+                            except Exception as e:
+                                console.print(f"[yellow]⚠️ Konnte Datei nicht lesen: {e}[/yellow]")
+                        else:
+                            console.print(f"[red]❌ Datei wurde nicht erstellt: {filename}[/red]")
+                    else:
+                        console.print(f"[red]❌ Fehler beim Speichern des Reports[/red]")
+                else:
+                    console.print(f"[red]❌ Keine Antwort von Ollama erhalten[/red]")
+                
+                return True
+                
+            except Exception as e:
+                console.print(f"[red]❌ Fehler bei Auto-Report-Generierung: {e}[/red]")
+                import traceback
+                console.print(f"[red]Traceback: {traceback.format_exc()}[/red]")
+                return False
+        
+        # Auto-Report Generierung (nur Report, dann beenden)
+        if args.auto_report:
+            if generate_system_report():
+                console.print(f"\n[bold green]Auto-Report abgeschlossen![/bold green]")
+                return 0
+            else:
+                return 1
+        
+        # Report-and-Chat Generierung (Report + Chat)
+        if args.report_and_chat:
+            if generate_system_report():
+                console.print(f"\n[bold green]Report generiert! Starte Chat...[/bold green]")
+            else:
+                console.print(f"[red]❌ Fehler bei Report-Generierung, aber Chat wird trotzdem gestartet[/red]")
         
         # Sammle Logs (nur wenn nicht --no-logs)
         if args.no_logs:

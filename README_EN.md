@@ -1,275 +1,336 @@
-# AI Log-Analyzer with Kubernetes Support
+# 🔍 SSH-based Linux Log Analyzer with Chat
 
-An intelligent SSH-based Linux log analyzer with integrated Ollama chat and Kubernetes cluster analysis.
-
-## 🌍 **Dynamic AI-driven Internationalization**
-- **POSIX-compliant**: Uses standard gettext without external dependencies
-- **Automatic Language Detection**: Detects language from shell locale (`LANG`, `LC_ALL`, `LC_MESSAGES`)
-- **Supported Languages**: German (default) and English
-- **Dynamic Translation**: Automatic AI translation for unknown locales
-- **Ollama Integration**: Real-time translation generation with AI
-- **Fallback System**: Robust translations even without gettext files
-- **Persistence**: Dynamic translations are saved and reused
-- **Runtime Language Switching**: Switch between languages at runtime
+An intelligent log analyzer for Linux systems with SSH access that automatically collects system information, analyzes logs, and provides an interactive chat with AI support.
 
 ## 🚀 Features
 
-### 🔍 **Comprehensive System Analysis**
-- **Basic System Information**: Hostname, distribution, kernel, CPU, RAM, uptime
-- **Storage Analysis**: Disk usage, largest files and directories
-- **Service Status**: Running services and processes
-- **Security Analysis**: Logins, failed login attempts
-- **Performance Monitoring**: CPU, memory, load average
+- **🔍 Automatic System Analysis**: Collects comprehensive system information
+- **📊 Log Analysis**: Analyzes system logs with AI support
+- **🤖 AI Chat**: Interactive chat with Ollama for system questions
+- **🐳 Docker Analysis**: Detailed Docker container analysis
+- **☸️ Kubernetes Support**: Kubernetes cluster analysis
+- **🖥️ Proxmox Integration**: Proxmox cluster monitoring
+- **📧 Mail Server Analysis**: Mailcow, Postfix and other mail servers
+- **🔐 Security Analysis**: Network security and CVE checks
+- **📄 Automatic Reports**: System reports with `--auto-report` or `--report-and-chat`
+- **🔍 CVE Security Analysis**: Real CVE databases (NIST NVD, European DBs) + AI analysis
+- **🇪🇺 EU Compliance**: European CVE databases for GDPR and NIS directive
 
-### ☸️ **Kubernetes Cluster Analysis**
-- **Automatic Detection**: Checks `kubectl` and `k9s` availability
-- **Cluster Information**: Version, nodes, namespaces, pods, services
-- **Problem Detection**: Not-ready nodes, not-running pods, critical events
-- **Resource Monitoring**: Node and pod resource usage
-- **Storage Analysis**: Persistent volumes and their status
+## 📦 Installation
 
-### 🤖 **Intelligent Ollama Chat**
-- **Dynamic Model Selection**: Intelligent selection based on complexity
-- **Shortcuts**: Quick access to frequent questions
-- **Intelligent Caching**: Optimized performance for repeated questions
-- **Automatic System Analysis**: Detailed insights on startup
-- **German Translations**: Fully localized user interface
-- **Automatic Report Generation**: Professional system reports with action items
+### Prerequisites
 
-### ⚡ **Performance Optimizations**
-- **Quick Mode**: Skips time-consuming analyses
-- **Intelligent Error Handling**: Grouped error summaries
-- **Model Selection**: Automatic complexity detection
-- **Cache System**: Avoids redundant API calls
-- **Asynchronous Analysis**: Background analysis for immediate menu display
-- **Debug Mode**: Detailed outputs for developers
+- Python 3.8+
+- SSH access to target system
+- Ollama (for AI functions)
 
-## 📋 Requirements
+### Installation
 
-### System Requirements
-- **Python 3.8+**
-- **SSH access** to target system
-- **Ollama** locally installed and running
-- **kubectl** (optional, for Kubernetes analysis)
-
-### Python Packages
 ```bash
-pip install rich requests paramiko
-```
+# Clone repository
+git clone <repository-url>
+cd macos-loganalyser
 
-## 🛠️ Installation
-
-1. **Clone Repository**:
-```bash
-git clone https://github.com/ssachse/ai_loganalyser.git
-cd ai_loganalyser
-```
-
-2. **Install Dependencies**:
-```bash
+# Install dependencies
 pip install -r requirements.txt
+
+# Install Ollama (if not available)
+curl -fsSL https://ollama.ai/install.sh | sh
 ```
 
-3. **Start Ollama**:
-```bash
-ollama serve
-```
-
-## 🚀 Usage
+## 🎯 Usage
 
 ### Basic Usage
+
 ```bash
+# Simple analysis
 python3 ssh_chat_system.py user@hostname
+
+# With password
+python3 ssh_chat_system.py user@hostname --password mypassword
+
+# With SSH key
+python3 ssh_chat_system.py user@hostname --key-file ~/.ssh/id_rsa
+```
+
+### CVE Security Analysis
+
+```bash
+# CVE analysis with hybrid approach (NVD + Ollama) - Recommended
+python3 ssh_chat_system.py user@hostname --with-cve --cve-database hybrid
+
+# NIST NVD database only
+python3 ssh_chat_system.py user@hostname --with-cve --cve-database nvd
+
+# Ollama AI analysis only
+python3 ssh_chat_system.py user@hostname --with-cve --cve-database ollama
+
+# European CVE databases (BSI, NCSC, ENISA, CERT-EU)
+python3 ssh_chat_system.py user@hostname --with-cve --cve-database european
+
+# Hybrid with European databases
+python3 ssh_chat_system.py user@hostname --with-cve --cve-database hybrid-european
+
+# EU compliance mode (GDPR, NIS directive)
+python3 ssh_chat_system.py user@hostname --with-cve --cve-database european --eu-compliance
+
+# With caching for better performance
+python3 ssh_chat_system.py user@hostname --with-cve --cve-cache
+
+# Offline mode (local data only)
+python3 ssh_chat_system.py user@hostname --with-cve --cve-offline
+```
+
+### Automatic Reports
+
+```bash
+# Generate report only and exit
+python3 ssh_chat_system.py user@hostname --auto-report
+
+# Generate report and then start chat
+python3 ssh_chat_system.py user@hostname --report-and-chat
+
+# Report with CVE analysis
+python3 ssh_chat_system.py user@hostname --auto-report --with-cve --cve-database hybrid
+
+# Report with European CVE analysis
+python3 ssh_chat_system.py user@hostname --auto-report --with-cve --cve-database european --eu-compliance
 ```
 
 ### Advanced Options
+
 ```bash
-# Quick mode (fast analysis)
+# Quick mode (faster analysis)
 python3 ssh_chat_system.py user@hostname --quick
 
-# Without log collection (system info only)
+# Without log collection
 python3 ssh_chat_system.py user@hostname --no-logs
 
-# Debug mode (detailed outputs)
+# Debug mode
 python3 ssh_chat_system.py user@hostname --debug
 
-# Custom SSH parameters
-python3 ssh_chat_system.py user@hostname --port 2222 --key-file ~/.ssh/id_rsa
+# Network security analysis
+python3 ssh_chat_system.py user@hostname --include-network-security
 
-# Keep temporary files
-python3 ssh_chat_system.py user@hostname --keep-files
+# Combined analysis
+python3 ssh_chat_system.py user@hostname --with-cve --cve-database hybrid --report-and-chat --include-network-security
 ```
 
-### Chat Shortcuts
+## 🔧 Available Options
+
+| Option | Description |
+|--------|-------------|
+| `--username USERNAME` | SSH username |
+| `--password PASSWORD` | SSH password |
+| `--key-file KEY_FILE` | SSH key file |
+| `--port PORT` | SSH port (default: 22) |
+| `--ollama-port OLLAMA_PORT` | Ollama port (default: 11434) |
+| `--no-port-forwarding` | Disable port forwarding |
+| `--hours HOURS` | Log analysis timeframe (default: 24) |
+| `--keep-files` | Keep temporary files |
+| `--output OUTPUT` | Output directory |
+| `--quick` | Quick mode for fast analysis |
+| `--no-logs` | Skip log collection |
+| `--debug` | Debug mode |
+| `--include-network-security` | Network security analysis |
+| `--auto-report` | Generate automatic system report |
+| `--report-and-chat` | Generate report and start chat |
+| `--with-cve` | CVE security analysis |
+| `--cve-database {ollama,nvd,hybrid,european,hybrid-european}` | CVE database (default: hybrid) |
+| `--cve-cache` | Use local CVE cache |
+| `--cve-offline` | Use local CVE data only |
+| `--eu-compliance` | Enable EU compliance mode (GDPR, NIS directive) |
+
+## 🔍 CVE Security Analysis
+
+The system supports various CVE databases:
+
+### 🔗 NIST NVD (National Vulnerability Database)
+- **Official US government database**
+- **Complete CVE data**
+- **Free and publicly accessible**
+- **Rate limiting**: 5 requests per 6 seconds
+
+### 🇪🇺 European CVE Databases
+- **BSI (Germany)**: Federal Office for Information Security
+- **NCSC (UK)**: National Cyber Security Centre
+- **ENISA (EU)**: European Union Agency for Cybersecurity
+- **CERT-EU**: Computer Emergency Response Team for EU Institutions
+- **GDPR Compliance**: General Data Protection Regulation
+- **NIS Directive**: Network and Information Security Directive
+
+### 🤖 Ollama AI Analysis
+- **Intelligent analysis and context understanding**
+- **Training-based CVE information**
+- **Fast processing**
+
+### 🔄 Hybrid Approaches
+- **Hybrid (Standard)**: Combines NVD data with Ollama analysis
+- **Hybrid-European**: Combines European DBs with Ollama analysis
+- **NVD**: For current, official CVE data
+- **European**: For EU-specific compliance and local threats
+- **Ollama**: For intelligent analysis and recommendations
+- **Caching**: For performance optimization
+
+### 📊 CVE Categories
+- **Critical**: CVSS Score ≥ 9.0
+- **High**: CVSS Score ≥ 7.0
+- **Medium**: CVSS Score ≥ 4.0
+- **Low**: CVSS Score < 4.0
+
+## 📄 Example Output
+
 ```
-services    - Which services are running on the system?
-storage     - How is the storage space?
-security    - Are there security issues?
-performance - How is the system performance?
-users       - Which users are active?
-updates     - Are there available system updates?
-logs        - What do the logs show?
-k8s         - How is the Kubernetes cluster status?
-k8s-problems- What Kubernetes problems are there?
-k8s-pods    - Which pods are running in the cluster?
-k8s-nodes   - How is the node status?
-k8s-resources- How is the resource usage in the cluster?
-proxmox     - How is the Proxmox VE status?
-proxmox-problems- What Proxmox problems are there?
-proxmox-vms - Which VMs are running on Proxmox?
-proxmox-containers- Which containers are running on Proxmox?
-proxmox-storage- How is the Proxmox storage space?
-report      - Create a detailed system report with action items
-help        - Show available shortcuts
+🔍 CVE Security Analysis
+============================================================
+Database: hybrid-european, Cache: Enabled, Offline: No
+
+✅ NVD CVE analysis completed
+📊 3 services analyzed
+🔍 5 CVEs found
+📈 Overall risk: High
+
+✅ Ollama CVE analysis completed
+📊 15 packages analyzed
+🔧 8 services checked
+
+🇪🇺 European CVE analysis completed
+🇪🇺 4 EU databases checked
+🔍 3 European CVEs found
+🔒 GDPR compliant: Yes
+🏛️ NIS directive: Yes
+
+🚨 2 critical CVEs found!
+⚠️ 3 high CVEs found
+
+Critical CVEs in: openssh-server, docker-ce
+High CVEs in: apache2, nginx, mysql-server
 ```
+
+## 🎯 Chat Functions
+
+After analysis, you can ask questions:
+
+### System Questions
+- `s1` - Which services are running?
+- `s2` - Storage space status?
+- `s3` - Security issues?
+- `s4` - Top processes?
+- `s5` - System performance?
+
+### Docker Questions
+- `d1` - Docker status and containers?
+- `d2` - Docker problems?
+- `d3` - Running containers?
+- `d4` - Docker images?
+
+### Kubernetes Questions
+- `k1` - Cluster status?
+- `k2` - Kubernetes problems?
+- `k3` - Running pods?
+
+### Proxmox Questions
+- `p1` - Proxmox status?
+- `p2` - Proxmox problems?
+- `p3` - Running VMs?
+
+### Network Security
+- `n1` - Complete network security analysis
+- `n2` - Externally accessible services
+- `n3` - Port scan
+- `n4` - Service tests
+
+## 📁 Output
+
+### System Reports
+- **Location**: `system_reports/`
+- **Format**: Markdown
+- **Content**: Complete system analysis with recommendations
+
+### Log Archives
+- **Format**: `.tar.gz`
+- **Content**: Collected logs and system information
+
+### CVE Cache
+- **Location**: `cve_cache.json`
+- **Validity**: 24 hours
+- **Content**: Cached CVE data for better performance
+
+### European CVE Cache
+- **Location**: `european_cve_cache.json`
+- **Validity**: 24 hours
+- **Content**: Cached European CVE data
 
 ## 🔧 Configuration
 
-### SSH Connection
-- **Default Port**: 22
-- **Authentication**: Password or SSH key
-- **Timeout**: 30 seconds per command
+### NVD API Key (Optional)
+For higher rate limits, you can use an NVD API key:
 
-### Ollama Integration
-- **Default Port**: 11434
-- **Models**: Intelligent selection based on model names and complexity
-- **Cache**: Intelligent caching for optimal performance
-- **Model Priorities**: 
-  - **Menu**: `qwen:0.5b` (ultra-fast)
-  - **Simple Analysis**: `qwen:0.5b` → `llama3.2:3b`
-  - **Complex Analysis**: `llama3.1:8b` → `deepseek-r1:14b` → `mistral:7b`
-- **Report Generation**: Uses `llama3.1:8b` for professional reports
-
-### Kubernetes Analysis
-- **Automatic Detection**: Checks `kubectl` availability
-- **Permissions**: Requires cluster access
-- **Error Handling**: Grouped kubectl errors
-
-### 📊 **Automatic Report Generation**
-- **CRAFT Prompt**: Professional Enterprise Architect prompt
-- **Markdown Export**: Structured reports as `.md` files
-- **Automatic Storage**: `system_reports/` directory with timestamp
-- **German Reports**: Fully German-generated reports
-- **Structured Output**: Executive Summary, action overview, detailed action plan
-- **Prioritization**: Impact/effort assessment with Quick Wins → Mid-Term → Long-Term
-
-## 📊 Output Examples
-
-### System Overview
-```
-📊 System Overview
-============================================================
-                    System Basic Information                     
-┏━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ Property             ┃ Value                                   ┃
-┡━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
-│ Hostname             │ server.example.com                      │
-│ Distribution         │ Ubuntu 22.04.5 LTS                      │
-│ Kernel               │ 5.15.0-139-generic                      │
-│ CPU                  │ AMD EPYC-Rome Processor                 │
-│ RAM                  │ 30Gi                                    │
-└──────────────────────┴──────────────────────────────────────────┘
+```bash
+export NVD_API_KEY="your-api-key-here"
 ```
 
-### Kubernetes Cluster
-```
-☸️ Kubernetes Cluster
-============================================================
-Cluster Information:
-Kubernetes control plane is running at https://142.132.176.3:6443
+### Ollama Models
+The system automatically selects the best available model:
+- **Complex analyses**: `llama3.2:70b` or `llama3.1:70b`
+- **Standard chat**: `llama3.2:8b` or `llama3.1:8b`
 
-⚠️  3 problems found:
-- Not-ready nodes
-- Not-running pods  
-- Problematic persistent volumes
-```
+## 🐛 Troubleshooting
 
-### Intelligent Error Handling
-```
-⚠️  Error Summary (8 errors):
+### SSH Connection Issues
+```bash
+# Test SSH connection
+ssh user@hostname
 
-🔒 Permission Denied (5 errors):
-   Further analysis not possible due to missing permissions.
-   Affected areas:
-   • Storage analysis
-   • Log file access
-
-💡 Tip: Use a user with extended permissions for complete analysis.
+# Check SSH key permissions
+chmod 600 ~/.ssh/id_rsa
 ```
 
-### 📄 **Automatic Report Generation**
-```
-✅ Report successfully created:
-📄 system_reports/system_report_server_20250723_143022.md
+### Ollama Issues
+```bash
+# Start Ollama
+ollama serve
 
-# System Report: server.example.com
-
-**Created on:** 23.07.2025 at 14:30
-**System:** server.example.com
-**Distribution:** Ubuntu 22.04.5 LTS
-**Kernel:** 5.15.0-139-generic
-
----
-
-## Executive Summary
-
-The system shows several critical points that require immediate attention.
-
-## Prioritized Action Overview
-
-| ID | Topic | Action | Impact | Effort | Priority |
-|----|-------|--------|--------|--------|----------|
-| 1 | Storage | Extend root partition | High | Medium | Critical |
-| 2 | Security | Harden SSH configuration | High | Low | High |
-| 3 | Performance | Implement log rotation | Medium | Low | Medium |
-
-## Detailed Action Plan
-
-### 1. Storage Optimization
-- **What:** Extend root partition or migrate data
-- **Why:** 75% usage is critical
-- **How:** Extend LVM or move /var to separate partition
-- **Effort:** 2-4 hours
-- **Responsible:** System Administrator
+# Check available models
+ollama list
 ```
 
-## 🔒 Security
+### CVE Analysis Issues
+```bash
+# Test NVD API
+curl "https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=openssh"
 
-### SSH Security
-- **Encrypted Connection**: Standard SSH encryption
-- **Key-based Authentication**: Supports SSH keys
-- **Timeout Protection**: Prevents hanging connections
+# Delete CVE cache
+rm cve_cache.json
+rm european_cve_cache.json
+```
 
-### Data Protection
-- **Local Processing**: All data remains local
-- **Temporary Files**: Automatic cleanup
-- **Sensitive Data**: Not stored
+## 📈 Performance Tips
+
+1. **Quick Mode**: Use `--quick` for fast analyses
+2. **Caching**: Enable `--cve-cache` for repeated analyses
+3. **Offline Mode**: Use `--cve-offline` for local data
+4. **NVD API Key**: For higher rate limits
+5. **European DBs**: For EU-specific compliance
 
 ## 🤝 Contributing
 
-1. **Fork** the repository
-2. **Create Feature Branch** (`git checkout -b feature/AmazingFeature`)
-3. **Commit** your changes (`git commit -m 'Add some AmazingFeature'`)
-4. **Push** to the branch (`git push origin feature/AmazingFeature`)
-5. **Open Pull Request**
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a pull request
 
-## 📝 License
+## 📄 License
 
-This project is licensed under the MIT License - see [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License.
 
-## 🙏 Acknowledgments
+## 🔗 Links
 
-- **Ollama**: For local LLM integration
-- **Rich**: For beautiful terminal output
-- **Paramiko**: For SSH functionality
-- **Kubernetes**: For container orchestration
-
-## 📞 Support
-
-For questions or issues:
-- **Issues**: [GitHub Issues](https://github.com/ssachse/ai_loganalyser/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/ssachse/ai_loganalyser/discussions)
-
----
-
-**Developed with ❤️ for DevOps and System Administrators** 
+- [NIST NVD](https://nvd.nist.gov/) - National Vulnerability Database
+- [BSI](https://www.bsi.bund.de/) - Federal Office for Information Security
+- [NCSC](https://www.ncsc.gov.uk/) - National Cyber Security Centre
+- [ENISA](https://www.enisa.europa.eu/) - European Union Agency for Cybersecurity
+- [CERT-EU](https://cert.europa.eu/) - Computer Emergency Response Team for EU Institutions
+- [Ollama](https://ollama.ai/) - Local LLM Engine
+- [MITRE CVE](https://cve.mitre.org/) - Common Vulnerabilities and Exposures 
