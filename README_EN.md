@@ -15,6 +15,7 @@ An intelligent log analyzer for Linux systems with SSH access that automatically
 - **📄 Automatic Reports**: System reports with `--auto-report` or `--report-and-chat`
 - **🔍 CVE Security Analysis**: Real CVE databases (NIST NVD, European DBs) + AI analysis
 - **🇪🇺 EU Compliance**: European CVE databases for GDPR and NIS directive
+- **🌐 HTML5 Reports**: Interactive HTML5 reports with clickable elements and tabs
 
 ## 📦 Installation
 
@@ -95,6 +96,12 @@ python3 ssh_chat_system.py user@hostname --auto-report --with-cve --cve-database
 
 # Report with European CVE analysis
 python3 ssh_chat_system.py user@hostname --auto-report --with-cve --cve-database european --eu-compliance
+
+# HTML5 report with clickable elements
+python3 ssh_chat_system.py user@hostname --auto-report --html-report
+
+# HTML5 report with CVE analysis
+python3 ssh_chat_system.py user@hostname --auto-report --with-cve --html-report
 ```
 
 ### Advanced Options
@@ -260,6 +267,17 @@ After analysis, you can ask questions:
 - **Location**: `european_cve_cache.json`
 - **Validity**: 24 hours
 - **Content**: Cached European CVE data
+
+### HTML5 Reports
+- **Location**: `system_reports/` (`.html` files)
+- **Features**: 
+  - 📋 Interactive tabs (Summary, Details, Security, Performance)
+  - 🔽 Collapsible sections for detailed information
+  - 📊 Status cards with hover effects
+  - 📈 Progress bars for performance metrics
+  - 🎨 Modern, responsive user interface
+  - 🌐 Automatic browser opening
+  - 📱 Mobile-optimized
 
 ## 🔧 Configuration
 
